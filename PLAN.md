@@ -6,7 +6,7 @@ Design principle: **absolute minimalism** — the minimal solution wins.
 
 ## What “done” looks like
 
-- `node cli.js` drops you into a prompt.
+- `node peen.js` drops you into a prompt.
 - You type a task.
 - The tool streams the model’s response from Ollama in real time.
 - The model can request **one tool**: `run(cmd)`.
@@ -92,6 +92,7 @@ Otherwise it outputs normal assistant text.
 - Enforce minimal safety & reliability limits:
   - max runtime (e.g. 10s) then kill
   - max output bytes (e.g. 64KB combined) then truncate
+- Ask user to approve all commands; there will be an override later
 
 ### Minimal denylist
 
@@ -120,11 +121,9 @@ For each user input:
 
 ## Minimal file structure
 
-- `cli.js` — REPL + slash commands + main loop
+- `peen.js` — REPL + slash commands + main loop
 - `ollama.js` — `checkOllama()` + `streamChat()`
 - `tools.js` — `runCommand()` + limits + denylist
-
-(Optionally collapse into a single `cli.js` initially.)
 
 ## Build order
 

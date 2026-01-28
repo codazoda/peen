@@ -1,11 +1,11 @@
 {
-  "name": "ollama-code-min",
-  "version": "0.0.0",
+  "name": "peen",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "Minimal Node CLI agent for Ollama with streaming + run(cmd) tool.",
   "license": "UNLICENSED",
   "scripts": {
-    "start": "node cli.js"
+    "start": "node peen.js"
   }
 }
