@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import { checkOllama, streamChat } from "./ollama.js";
 import { runCommand, formatToolResult } from "./tools.js";
 
-const SYSTEM_PROMPT = readFileSync(new URL("./SYSTEM_PROMPT.txt", import.meta.url), "utf-8").trim();
+const SYSTEM_PROMPT = readFileSync(new URL("./prompt/system.txt", import.meta.url), "utf-8").trim();
 
 function parseArgs(argv) {
   const args = { model: null, dangerous: false, root: null, debug: false };
