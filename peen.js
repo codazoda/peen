@@ -203,8 +203,13 @@ async function main() {
   }
 
   const { installDir } = getInstallPaths();
-  const localSha = await readLocalSha(installDir);
-  const version = localSha ? localSha.slice(0, 8) : null;
+  let version = null;
+  try {
+    const rawVersion = await fs.readFile(path.join(installDir, "VERSION"), "utf-8");
+    version = rawVersion.trim() || null;
+  } catch (err) {
+    version = null;
+  }
   printBanner(version);
 
   const { checkOllama, streamChat } = await import("./ollama.js");

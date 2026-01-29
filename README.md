@@ -33,6 +33,21 @@ curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bas
 
 On each start, `peen` checks GitHub for the latest commit and self-updates if needed.
 
+## Versioning
+
+This repo uses `git rev-list --count HEAD` to produce versions like `0.1.123`.
+
+Install the git hook once:
+
+```bash
+./scripts/install-hooks.sh
+```
+
+The hook updates:
+
+- `package.json` version
+- `VERSION` file
+
 ## Repo docs
 
 - See **PLAN.md** for the concrete build plan and design constraints.
