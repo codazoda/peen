@@ -63,6 +63,15 @@ function extractToolCalls(text) {
   return tools;
 }
 
+async function isGitRepo(root) {
+  try {
+    const stat = await fs.stat(path.join(root, ".git"));
+    return stat.isDirectory() || stat.isFile();
+  } catch (err) {
+    return false;
+  }
+}
+
 function getInstallPaths() {
   const dataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
   const binHome = process.env.XDG_BIN_HOME || path.join(os.homedir(), ".local", "bin");
@@ -223,6 +232,17 @@ async function main() {
     rl.close();
     process.exit(0);
   });
+
+  const repoRoot = args.root || process.cwd();
+  const inGitRepo = await isGitRepo(repoRoot);
+  if (!inGitRepo) {
+    process.stdout.write("(warn) current directory is not a git repository.\n");
+    const cont = await question("Continue anyway? [y/N] ");
+    if (cont === null || !/^y(es)?$/i.test(cont.trim())) {
+      rl.close();
+      process.exit(0);
+    }
+  }
 
   while (true) {
     const input = await question("> ");
