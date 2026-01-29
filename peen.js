@@ -378,7 +378,7 @@ async function main() {
       if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
         const content = "Command not run (user denied).";
         messages.push({ role: "tool", name: "run", content });
-        continue;
+        break;
       }
 
       const result = await runCommand({
