@@ -114,6 +114,28 @@ async function readLocalSha(installDir) {
   }
 }
 
+async function readLocalVersion(installDir) {
+  const versionPath = path.join(installDir, "VERSION");
+  try {
+    const raw = (await fs.readFile(versionPath, "utf-8")).trim();
+    if (/^0\.1\.\d+$/.test(raw)) return raw;
+  } catch (err) {
+    // fall through
+  }
+
+  const pkgPath = path.join(installDir, "package.json");
+  try {
+    const pkgRaw = await fs.readFile(pkgPath, "utf-8");
+    const pkg = JSON.parse(pkgRaw);
+    if (typeof pkg?.version === "string" && /^0\.1\.\d+$/.test(pkg.version)) {
+      return pkg.version;
+    }
+  } catch (err) {
+    return null;
+  }
+  return null;
+}
+
 async function fetchRemoteSha() {
   const data = await fetchJson(REPO_API, { timeoutMs: 1500 });
   return typeof data?.sha === "string" ? data.sha : null;
@@ -219,13 +241,7 @@ async function main() {
   }
 
   const { installDir } = getInstallPaths();
-  let version = null;
-  try {
-    const rawVersion = await fs.readFile(path.join(installDir, "VERSION"), "utf-8");
-    version = rawVersion.trim() || null;
-  } catch (err) {
-    version = null;
-  }
+  const version = await readLocalVersion(installDir);
   printBanner(version);
 
   const { checkOllama, streamChat } = await import("./ollama.js");
