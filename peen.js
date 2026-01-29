@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import readline from "readline";
 import { readFileSync, promises as fs } from "fs";
+import { spawn } from "child_process";
 import path from "path";
 import os from "os";
 
@@ -189,25 +190,35 @@ async function ensureLatest({ installOnly }) {
   } catch (err) {
     if (!localSha) {
       process.stdout.write("(update) offline or cannot check latest; continuing with installed version\n");
-      return installOnly ? "installed" : "skipped";
+      return { status: installOnly ? "installed" : "skipped", installDir };
     }
     process.stdout.write("(update) cannot check latest; continuing with installed version\n");
-    return installOnly ? "installed" : "skipped";
+    return { status: installOnly ? "installed" : "skipped", installDir };
   }
 
   if (!localSha || localSha !== remoteSha) {
     process.stdout.write("(update) installing latest peen...\n");
     await installLatest(installDir, binDir, remoteSha);
-    process.stdout.write("Installed peen. Please start it again.\n");
-    return "installed";
+    return { status: "installed", installDir };
   }
 
   if (installOnly) {
     process.stdout.write("peen is already up to date.\n");
-    return "installed";
+    return { status: "installed", installDir };
   }
 
-  return "up-to-date";
+  return { status: "up-to-date", installDir };
+}
+
+async function relaunchInstalled(installDir, argv) {
+  const target = path.join(installDir, "peen.js");
+  const child = spawn(process.execPath, [target, ...argv], {
+    stdio: "inherit",
+    env: { ...process.env, PEEN_RELAUNCHED: "1" },
+  });
+  return await new Promise((resolve) => {
+    child.on("exit", (code) => resolve(code ?? 0));
+  });
 }
 
 function printBanner(version) {
@@ -235,8 +246,13 @@ async function main() {
     process.exit(0);
   }
 
-  const updateStatus = await ensureLatest({ installOnly: args.installOnly });
-  if (updateStatus === "installed") {
+  const update = await ensureLatest({ installOnly: args.installOnly });
+  if (update.status === "installed") {
+    if (args.installOnly) process.exit(0);
+    if (!process.env.PEEN_RELAUNCHED) {
+      const code = await relaunchInstalled(update.installDir, process.argv.slice(2));
+      process.exit(code);
+    }
     process.exit(0);
   }
 
