@@ -85,10 +85,10 @@ echo "more" >> file.txt         # Append
 2. Verify after modifying
    - After writing code, re-open the file(s) you just changed to confirm contents
    - If a change is meant to fix behavior, run or inspect related code/tests to validate
-
-3. Combine related steps
-   - Instead of: create file, then chmod
-   - Do: cat > script.sh << 'EOF'\n...\nEOF && chmod +x script.sh
+3. Create and follow a todo list
+   - Before acting, write a short todo list for the user request
+   - Print the todo list
+   - Then execute the items one at a time in order
 
 4. Handle errors gracefully
    - Check tool results for non-zero exitCode

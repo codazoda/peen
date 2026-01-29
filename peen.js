@@ -8,6 +8,9 @@ import os from "os";
 const REPO_RAW = "https://raw.githubusercontent.com/codazoda/peen/main";
 const REPO_API = "https://api.github.com/repos/codazoda/peen/commits/main";
 const NETWORK_TIMEOUT_MS = 1500;
+const PROMPT_BG = "\x1b[100m";
+const PROMPT_FG = "\x1b[97m";
+const PROMPT_RESET = "\x1b[0m";
 const UPDATE_STATUS = {
   INSTALLED: "installed",
   SKIPPED: "skipped",
@@ -317,7 +320,10 @@ async function main() {
   const question = (q) =>
     new Promise((resolve) => {
       if (rlClosed) return resolve(null);
-      rl.question(q, (answer) => resolve(answer));
+      rl.question(`${PROMPT_BG}${PROMPT_FG}${q}`, (answer) => {
+        process.stdout.write(`${PROMPT_RESET}\r\x1b[2K`);
+        resolve(answer);
+      });
     });
 
   const systemMessage = { role: "system", content: SYSTEM_PROMPT };
@@ -408,6 +414,7 @@ async function main() {
       }
 
       process.stdout.write(`(tool request) run: ${tool.cmd}\n`);
+      process.stdout.write(`${PROMPT_RESET}\n`);
       const approve = await question("Run? [Y/n] ");
       if (approve !== null) process.stdout.write("\n");
       if (approve === null) break;
