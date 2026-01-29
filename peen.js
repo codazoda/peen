@@ -264,7 +264,7 @@ async function main() {
     const preferred = "llama3.1:latest";
     const hasPreferred = tags.some((t) => t?.name === preferred);
     model = hasPreferred ? preferred : tags[0]?.name || "llama3";
-    process.stdout.write(`Using model: ${model}\n`);
+    process.stdout.write(`Using model: ${model}\n\n`);
   }
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -306,6 +306,7 @@ async function main() {
     const input = await question("> ");
     if (input === null) break;
     if (!input) continue;
+    process.stdout.write("\n");
 
     if (input.startsWith("/")) {
       if (input === "/exit") {
@@ -355,6 +356,7 @@ async function main() {
       }
 
       if (!assistantText.endsWith("\n")) process.stdout.write("\n");
+      process.stdout.write("\n");
 
       const tools = extractToolCalls(assistantText);
       if (tools.length === 0) {
