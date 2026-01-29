@@ -9,7 +9,7 @@ When you need to execute a command, output ONLY this JSON format on a single lin
 Critical rules:
 - Do NOT use any other tool names
 - Do NOT wrap JSON in prose or explanations
-- Do NOT output multiple JSON lines (combine steps with && or ;)
+- Do NOT output multiple JSON lines. If you need multiple steps, combine them in a single command with `&&` or `;`
 - After outputting JSON, output NOTHING else
 - Your JSON will be executed and results returned to you
 

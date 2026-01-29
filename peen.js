@@ -572,23 +572,25 @@ async function main() {
 
       messages.push({ role: "assistant", content: assistantText });
 
-      const [entry, ...rest] = tools;
-      if (rest.length > 0) {
-        process.stdout.write(
-          `(note) ${rest.length} additional tool call(s) queued; will let the model decide next step\n`
-        );
+      const runnable = tools
+        .map((entry) => entry.tool.cmd)
+        .filter((cmd) => !isNoopEcho(cmd));
+      const skipped = tools.length - runnable.length;
+      if (skipped > 0) {
+        messages.push({
+          role: "tool",
+          name: "run",
+          content: "One or more echo-only tool calls were skipped.",
+        });
       }
-
-      const tool = entry.tool;
-      if (isNoopEcho(tool.cmd)) {
-        const content = "Command not run (echo-only tool call is unnecessary). Continue without tools.";
-        messages.push({ role: "tool", name: "run", content });
+      if (runnable.length === 0) {
         break;
       }
 
-      const desc = describeToolCall(entry);
+      const desc = describeToolCall(tools[0]);
+      const combined = runnable.join(" && ");
       process.stdout.write(`${desc}\n`);
-      process.stdout.write(`${TOOL_CMD_RED}${tool.cmd}${PROMPT_RESET}\n`);
+      process.stdout.write(`${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
       process.stdout.write(`${PROMPT_RESET}\n`);
       const approve = await question("Run? [Y/n] ");
       if (approve !== null) process.stdout.write("\n");
@@ -602,7 +604,7 @@ async function main() {
       }
 
       const result = await runCommand({
-        cmd: tool.cmd,
+        cmd: combined,
         cwd: args.root || process.cwd(),
         dangerous: args.dangerous,
       });
