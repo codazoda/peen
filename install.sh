@@ -3,9 +3,9 @@ set -euo pipefail
 
 REPO_RAW="https://raw.githubusercontent.com/codazoda/peen/main"
 
-TMP_BASE="$(mktemp -t peen.XXXXXX)"
-TMP="${TMP_BASE}.js"
-trap 'rm -f "${TMP}" "${TMP_BASE}"' EXIT
+TMP_DIR="$(mktemp -d -t peen.XXXXXX)"
+TMP="${TMP_DIR}/peen.js"
+trap 'rm -rf "${TMP_DIR}"' EXIT
 
 curl -fsSL "${REPO_RAW}/peen.js" -o "${TMP}"
 node "${TMP}" --install-only
