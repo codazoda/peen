@@ -111,6 +111,9 @@ async function installLatest(installDir, binDir, sha) {
   await fs.mkdir(path.join(installDir, "prompt"), { recursive: true });
   await fs.mkdir(binDir, { recursive: true });
 
+  const packageJson = JSON.stringify({ type: "module" }, null, 2);
+  await fs.writeFile(path.join(installDir, "package.json"), packageJson, "utf-8");
+
   const files = ["peen.js", "ollama.js", "tools.js", "prompt/system.txt"];
   for (const file of files) {
     const content = await fetchText(`${REPO_RAW}/${file}`);
