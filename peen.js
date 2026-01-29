@@ -1,18 +1,23 @@
 #!/usr/bin/env node
 import readline from "readline";
-import { readFileSync } from "fs";
-import { checkOllama, streamChat } from "./ollama.js";
-import { runCommand, formatToolResult } from "./tools.js";
+import { readFileSync, promises as fs } from "fs";
+import path from "path";
+import os from "os";
 
-const SYSTEM_PROMPT = readFileSync(new URL("./prompt/system.txt", import.meta.url), "utf-8").trim();
+const REPO_RAW = "https://raw.githubusercontent.com/codazoda/peen/main";
+const REPO_API = "https://api.github.com/repos/codazoda/peen/commits/main";
 
 function parseArgs(argv) {
-  const args = { model: null, dangerous: false, root: null, debug: false };
+  const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--model" && argv[i + 1]) {
       args.model = argv[i + 1];
       i += 1;
+      continue;
+    }
+    if (arg === "--install-only") {
+      args.installOnly = true;
       continue;
     }
     if (arg === "--dangerous") {
@@ -58,14 +63,120 @@ function extractToolCalls(text) {
   return tools;
 }
 
+function getInstallPaths() {
+  const dataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
+  const binHome = process.env.XDG_BIN_HOME || path.join(os.homedir(), ".local", "bin");
+  return {
+    installDir: path.join(dataHome, "peen"),
+    binDir: binHome,
+  };
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "peen" },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+async function fetchText(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "peen" },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.text();
+}
+
+async function readLocalSha(installDir) {
+  try {
+    const data = await fs.readFile(path.join(installDir, "VERSION"), "utf-8");
+    return data.trim() || null;
+  } catch (err) {
+    return null;
+  }
+}
+
+async function fetchRemoteSha() {
+  const data = await fetchJson(REPO_API);
+  return typeof data?.sha === "string" ? data.sha : null;
+}
+
+async function writeExecutable(filePath, content) {
+  await fs.writeFile(filePath, content, "utf-8");
+  await fs.chmod(filePath, 0o755);
+}
+
+async function installLatest(installDir, binDir, sha) {
+  await fs.mkdir(path.join(installDir, "prompt"), { recursive: true });
+  await fs.mkdir(binDir, { recursive: true });
+
+  const files = ["peen.js", "ollama.js", "tools.js", "prompt/system.txt"];
+  for (const file of files) {
+    const content = await fetchText(`${REPO_RAW}/${file}`);
+    await fs.writeFile(path.join(installDir, file), content, "utf-8");
+  }
+
+  await fs.chmod(path.join(installDir, "peen.js"), 0o755);
+
+  const shim = `#!/usr/bin/env bash
+set -euo pipefail
+exec node "${installDir}/peen.js" "$@"
+`;
+  await writeExecutable(path.join(binDir, "peen"), shim);
+  await fs.writeFile(path.join(installDir, "VERSION"), sha || "unknown", "utf-8");
+}
+
+async function ensureLatest({ installOnly }) {
+  const { installDir, binDir } = getInstallPaths();
+  const localSha = await readLocalSha(installDir);
+
+  let remoteSha = null;
+  try {
+    remoteSha = await fetchRemoteSha();
+  } catch (err) {
+    if (!localSha) {
+      process.stdout.write("(update) cannot check latest; installing anyway\n");
+      await installLatest(installDir, binDir, "unknown");
+      process.stdout.write("Installed peen. Please start it again.\n");
+      return "installed";
+    }
+    process.stdout.write("(update) cannot check latest; continuing with installed version\n");
+    return installOnly ? "installed" : "skipped";
+  }
+
+  if (!localSha || localSha !== remoteSha) {
+    process.stdout.write("(update) installing latest peen...\n");
+    await installLatest(installDir, binDir, remoteSha);
+    process.stdout.write("Installed peen. Please start it again.\n");
+    return "installed";
+  }
+
+  if (installOnly) {
+    process.stdout.write("peen is already up to date.\n");
+    return "installed";
+  }
+
+  return "up-to-date";
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node peen.js [--model <name>] [--root <path>] [--dangerous] [--debug]\n"
+      "Usage: node peen.js [--model <name>] [--root <path>] [--dangerous] [--debug] [--install-only]\n"
     );
     process.exit(0);
   }
+
+  const updateStatus = await ensureLatest({ installOnly: args.installOnly });
+  if (updateStatus === "installed") {
+    process.exit(0);
+  }
+
+  const { checkOllama, streamChat } = await import("./ollama.js");
+  const { runCommand, formatToolResult } = await import("./tools.js");
+  const SYSTEM_PROMPT = readFileSync(new URL("./prompt/system.txt", import.meta.url), "utf-8").trim();
 
   //const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
   const host = process.env.OLLAMA_HOST || "http://172.30.200.200:11434";

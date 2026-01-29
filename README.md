@@ -31,6 +31,8 @@ Quick install (pulls raw files from `main`, no build step):
 curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bash
 ```
 
+On each start, `peen` checks GitHub for the latest commit and self-updates if needed.
+
 ## Repo docs
 
 - See **PLAN.md** for the concrete build plan and design constraints.
