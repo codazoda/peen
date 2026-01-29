@@ -40,6 +40,26 @@ function formatTodoList(items, doneIndex) {
   return lines.join("\n");
 }
 
+function stripTodoBlocks(text) {
+  const lines = text.split("\n");
+  const out = [];
+  let skipping = false;
+  for (const line of lines) {
+    if (!skipping && /^TODO:\s*$/.test(line.trim())) {
+      skipping = true;
+      continue;
+    }
+    if (skipping) {
+      if (line.trim() === "") {
+        skipping = false;
+      }
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
 function parseArgs(argv) {
   const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false };
   for (let i = 2; i < argv.length; i += 1) {
@@ -89,11 +109,22 @@ function parseToolJsonLine(line) {
 function extractToolCalls(text) {
   const lines = text.split("\n");
   const tools = [];
-  for (const line of lines) {
-    const tool = parseToolJsonLine(line);
-    if (tool) tools.push(tool);
+  for (let i = 0; i < lines.length; i += 1) {
+    const tool = parseToolJsonLine(lines[i]);
+    if (tool) tools.push({ tool, lineIndex: i, lines });
   }
   return tools;
+}
+
+function describeToolCall(entry) {
+  const { lines, lineIndex } = entry;
+  for (let i = lineIndex - 1; i >= 0; i -= 1) {
+    const raw = lines[i].trim();
+    if (!raw) continue;
+    if (parseToolJsonLine(raw)) continue;
+    return raw;
+  }
+  return "About to run command:";
 }
 
 function isNoopEcho(cmd) {
@@ -276,6 +307,24 @@ async function relaunchInstalled(installDir, argv) {
   });
 }
 
+async function readMultilineInput(question) {
+  const lines = [];
+  let first = true;
+  while (true) {
+    const prompt = first ? "> " : "... ";
+    const line = await question(prompt);
+    if (line === null) return null;
+    if (line.endsWith("\\")) {
+      lines.push(line.slice(0, -1));
+      first = false;
+      continue;
+    }
+    lines.push(line);
+    break;
+  }
+  return lines.join("\n");
+}
+
 function printBanner(version) {
   const lines = [
     "                                  ",
@@ -378,7 +427,7 @@ async function main() {
   }
 
   while (true) {
-    const input = await question("> ");
+    const input = await readMultilineInput(question);
     if (input === null) break;
     if (!input) continue;
     process.stdout.write("\n");
@@ -409,24 +458,16 @@ async function main() {
     }
 
     messages.push({ role: "user", content: input });
-    todoState = { pendingList: true, items: [], index: 0 };
-    messages.push({
-      role: "user",
-      content:
-        "Before doing anything else, output a TODO list in this exact format:\n" +
-        "TODO:\n" +
-        "- [ ] First item\n" +
-        "- [ ] Next item\n",
-    });
 
     while (true) {
       let assistantText = "";
+      const shouldStream = !todoState;
       try {
         assistantText = await streamChat({
           host,
           model: currentModel,
           messages,
-          onToken: (token) => process.stdout.write(token),
+          onToken: shouldStream ? (token) => process.stdout.write(token) : null,
           debug: args.debug,
         });
       } catch (err) {
@@ -434,12 +475,48 @@ async function main() {
         break;
       }
 
-      if (!assistantText.endsWith("\n")) process.stdout.write("\n");
-      process.stdout.write("\n");
+      if (shouldStream) {
+        if (!assistantText.endsWith("\n")) process.stdout.write("\n");
+        process.stdout.write("\n");
+      }
+
+      const todoItemsInText = parseTodoList(assistantText);
+      if (!todoState && todoItemsInText) {
+        todoState = { pendingList: false, items: todoItemsInText, index: 0 };
+        if (!shouldStream) {
+          process.stdout.write(`${assistantText}\n\n`);
+        }
+        messages.push({ role: "assistant", content: assistantText });
+        process.stdout.write(`${formatTodoList(todoState.items, -1)}\n\n`);
+        messages.push({
+          role: "user",
+          content: `Proceed with step 1: ${todoState.items[0]}`,
+        });
+        messages.push({
+          role: "user",
+          content: "Do not output the TODO list again. I will track it.",
+        });
+        continue;
+      }
+      if (todoState && !todoState.pendingList && todoItemsInText) {
+        const filtered = stripTodoBlocks(assistantText);
+        if (!shouldStream && filtered) {
+          process.stdout.write(`${filtered}\n\n`);
+        }
+        messages.push({ role: "assistant", content: assistantText });
+        messages.push({
+          role: "user",
+          content: "Do not output the TODO list again. I will track it. Continue with the current step.",
+        });
+        continue;
+      }
 
       if (todoState?.pendingList) {
-        const items = parseTodoList(assistantText);
+        const items = todoItemsInText;
         if (!items) {
+          if (!shouldStream) {
+            process.stdout.write(`${assistantText}\n\n`);
+          }
           messages.push({ role: "assistant", content: assistantText });
           messages.push({
             role: "user",
@@ -454,13 +531,24 @@ async function main() {
         todoState.items = items;
         todoState.pendingList = false;
         todoState.index = 0;
+        if (!shouldStream) {
+          process.stdout.write(`${assistantText}\n\n`);
+        }
         messages.push({ role: "assistant", content: assistantText });
         process.stdout.write(`${formatTodoList(todoState.items, -1)}\n\n`);
         messages.push({
           role: "user",
           content: `Proceed with step 1: ${todoState.items[0]}`,
         });
+        messages.push({
+          role: "user",
+          content: "Do not output the TODO list again. I will track it.",
+        });
         continue;
+      }
+
+      if (!shouldStream) {
+        process.stdout.write(`${assistantText}\n\n`);
       }
 
       const tools = extractToolCalls(assistantText);
@@ -484,19 +572,22 @@ async function main() {
 
       messages.push({ role: "assistant", content: assistantText });
 
-      const [tool, ...remaining] = tools;
-      if (remaining.length > 0) {
+      const [entry, ...rest] = tools;
+      if (rest.length > 0) {
         process.stdout.write(
-          `(note) ${remaining.length} additional tool call(s) queued; will let the model decide next step\n`
+          `(note) ${rest.length} additional tool call(s) queued; will let the model decide next step\n`
         );
       }
 
+      const tool = entry.tool;
       if (isNoopEcho(tool.cmd)) {
         const content = "Command not run (echo-only tool call is unnecessary). Continue without tools.";
         messages.push({ role: "tool", name: "run", content });
         break;
       }
 
+      const desc = describeToolCall(entry);
+      process.stdout.write(`${desc}\n`);
       process.stdout.write(`${TOOL_CMD_RED}${tool.cmd}${PROMPT_RESET}\n`);
       process.stdout.write(`${PROMPT_RESET}\n`);
       const approve = await question("Run? [Y/n] ");

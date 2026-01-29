@@ -88,6 +88,9 @@ echo "more" >> file.txt         # Append
    - Prefer editing existing files by rewriting the full file or using precise edits (avoid appending that causes duplicates)
    - If you must append, first check for existing content to prevent duplication (e.g., grep for a unique line)
 3. Create and follow a todo list
+   - Only create a todo list when the task is multi-step or non-trivial
+   - Use specific, concrete items (avoid placeholders like "First item" or "Next item")
+   - Keep it short (2-6 items)
    - Before acting, write a short todo list for the user request
    - Print the todo list
    - Then execute the items one at a time in order
