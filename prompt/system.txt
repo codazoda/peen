@@ -85,6 +85,8 @@ echo "more" >> file.txt         # Append
 2. Verify after modifying
    - After writing code, re-open the file(s) you just changed to confirm contents
    - If a change is meant to fix behavior, run or inspect related code/tests to validate
+   - Prefer editing existing files by rewriting the full file or using precise edits (avoid appending that causes duplicates)
+   - If you must append, first check for existing content to prevent duplication (e.g., grep for a unique line)
 3. Create and follow a todo list
    - Before acting, write a short todo list for the user request
    - Print the todo list

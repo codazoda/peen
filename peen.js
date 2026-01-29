@@ -11,12 +11,34 @@ const NETWORK_TIMEOUT_MS = 1500;
 const PROMPT_BG = "\x1b[100m";
 const PROMPT_FG = "\x1b[97m";
 const PROMPT_RESET = "\x1b[0m";
+const TOOL_CMD_RED = "\x1b[31m";
 const UPDATE_STATUS = {
   INSTALLED: "installed",
   SKIPPED: "skipped",
   UP_TO_DATE: "up-to-date",
 };
 const VERSION_RE = /^0\.1\.\d+$/;
+const TODO_HEADER_RE = /^TODO:\s*$/im;
+const TODO_ITEM_RE = /^- \[ \] (.+)$/gm;
+
+function parseTodoList(text) {
+  if (!TODO_HEADER_RE.test(text)) return null;
+  const items = [];
+  let match;
+  while ((match = TODO_ITEM_RE.exec(text)) !== null) {
+    items.push(match[1].trim());
+  }
+  return items.length > 0 ? items : null;
+}
+
+function formatTodoList(items, doneIndex) {
+  const lines = ["TODO:"];
+  for (let i = 0; i < items.length; i += 1) {
+    const checked = i <= doneIndex ? "x" : " ";
+    lines.push(`- [${checked}] ${items[i]}`);
+  }
+  return lines.join("\n");
+}
 
 function parseArgs(argv) {
   const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false };
@@ -72,6 +94,13 @@ function extractToolCalls(text) {
     if (tool) tools.push(tool);
   }
   return tools;
+}
+
+function isNoopEcho(cmd) {
+  const trimmed = cmd.trim();
+  if (!trimmed.startsWith("echo ")) return false;
+  if (trimmed.includes(">") || trimmed.includes(">>") || trimmed.includes("|")) return false;
+  return true;
 }
 
 function printAvailableModels(tags) {
@@ -329,6 +358,7 @@ async function main() {
   const systemMessage = { role: "system", content: SYSTEM_PROMPT };
   let messages = [systemMessage];
   let currentModel = model;
+  let todoState = null;
 
   process.on("SIGINT", () => {
     process.stdout.write("\n");
@@ -379,6 +409,15 @@ async function main() {
     }
 
     messages.push({ role: "user", content: input });
+    todoState = { pendingList: true, items: [], index: 0 };
+    messages.push({
+      role: "user",
+      content:
+        "Before doing anything else, output a TODO list in this exact format:\n" +
+        "TODO:\n" +
+        "- [ ] First item\n" +
+        "- [ ] Next item\n",
+    });
 
     while (true) {
       let assistantText = "";
@@ -398,9 +437,48 @@ async function main() {
       if (!assistantText.endsWith("\n")) process.stdout.write("\n");
       process.stdout.write("\n");
 
+      if (todoState?.pendingList) {
+        const items = parseTodoList(assistantText);
+        if (!items) {
+          messages.push({ role: "assistant", content: assistantText });
+          messages.push({
+            role: "user",
+            content:
+              "Please respond with ONLY the TODO list in this exact format:\n" +
+              "TODO:\n" +
+              "- [ ] First item\n" +
+              "- [ ] Next item\n",
+          });
+          continue;
+        }
+        todoState.items = items;
+        todoState.pendingList = false;
+        todoState.index = 0;
+        messages.push({ role: "assistant", content: assistantText });
+        process.stdout.write(`${formatTodoList(todoState.items, -1)}\n\n`);
+        messages.push({
+          role: "user",
+          content: `Proceed with step 1: ${todoState.items[0]}`,
+        });
+        continue;
+      }
+
       const tools = extractToolCalls(assistantText);
       if (tools.length === 0) {
         messages.push({ role: "assistant", content: assistantText });
+        if (todoState && todoState.index < todoState.items.length) {
+          process.stdout.write(`${formatTodoList(todoState.items, todoState.index)}\n\n`);
+          todoState.index += 1;
+          if (todoState.index >= todoState.items.length) {
+            todoState = null;
+            break;
+          }
+          messages.push({
+            role: "user",
+            content: `Proceed with step ${todoState.index + 1}: ${todoState.items[todoState.index]}`,
+          });
+          continue;
+        }
         break;
       }
 
@@ -413,7 +491,13 @@ async function main() {
         );
       }
 
-      process.stdout.write(`(tool request) run: ${tool.cmd}\n`);
+      if (isNoopEcho(tool.cmd)) {
+        const content = "Command not run (echo-only tool call is unnecessary). Continue without tools.";
+        messages.push({ role: "tool", name: "run", content });
+        break;
+      }
+
+      process.stdout.write(`${TOOL_CMD_RED}${tool.cmd}${PROMPT_RESET}\n`);
       process.stdout.write(`${PROMPT_RESET}\n`);
       const approve = await question("Run? [Y/n] ");
       if (approve !== null) process.stdout.write("\n");
@@ -422,6 +506,7 @@ async function main() {
       if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
         const content = "Command not run (user denied).";
         messages.push({ role: "tool", name: "run", content });
+        todoState = null;
         break;
       }
 
