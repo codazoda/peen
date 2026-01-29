@@ -391,6 +391,7 @@ async function main() {
 
       process.stdout.write(`(tool request) run: ${tool.cmd}\n`);
       const approve = await question("Run? [Y/n] ");
+      if (approve !== null) process.stdout.write("\n");
       if (approve === null) break;
       const approveText = approve.trim();
       if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
