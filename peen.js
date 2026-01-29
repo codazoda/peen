@@ -48,35 +48,14 @@ function parseToolJsonLine(line) {
   return null;
 }
 
-function isToolJson(text) {
-  const raw = text.trim();
-  if (!raw) return null;
-
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
-  if (lines.length === 1) {
-    const tool = parseToolJsonLine(lines[0]);
-    return tool ? { tool, extra: 0 } : null;
-  }
-
-  // Allow a fenced JSON block: ```json { ... } ```
-  if (lines.length === 3) {
-    const [start, middle, end] = lines;
-    if ((start === "```json" || start === "```") && end === "```") {
-      const tool = parseToolJsonLine(middle);
-      return tool ? { tool, extra: 0 } : null;
-    }
-  }
-
-  // Allow multiple JSON tool lines with no other text.
+function extractToolCalls(text) {
+  const lines = text.split("\n");
   const tools = [];
   for (const line of lines) {
     const tool = parseToolJsonLine(line);
-    if (!tool) return null;
-    tools.push(tool);
+    if (tool) tools.push(tool);
   }
-  if (tools.length > 0) return { tool: tools[0], extra: tools.length - 1 };
-
-  return null;
+  return tools;
 }
 
 async function main() {
@@ -88,7 +67,8 @@ async function main() {
     process.exit(0);
   }
 
-  const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
+  //const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
+  const host = process.env.OLLAMA_HOST || "http://172.30.200.200:11434";
 
   let tags;
   try {
@@ -145,10 +125,15 @@ async function main() {
         process.stdout.write("(reset)\n");
         continue;
       }
-      if (input.startsWith("/model ")) {
-        const next = input.slice("/model ".length).trim();
+      if (input === "/model" || input.startsWith("/model ")) {
+        const next = input.slice("/model".length).trim();
         if (!next) {
-          process.stdout.write("Usage: /model <name>\n");
+          const models = tags.map((t) => t?.name).filter(Boolean);
+          if (models.length === 0) {
+            process.stdout.write("No models available.\n");
+          } else {
+            process.stdout.write(`Available models:\n${models.join("\n")}\n`);
+          }
         } else {
           currentModel = next;
           messages = [systemMessage];
@@ -179,20 +164,26 @@ async function main() {
 
       if (!assistantText.endsWith("\n")) process.stdout.write("\n");
 
-      const toolResult = isToolJson(assistantText);
-      if (!toolResult) {
+      const tools = extractToolCalls(assistantText);
+      if (tools.length === 0) {
         messages.push({ role: "assistant", content: assistantText });
         break;
       }
 
-      const { tool, extra } = toolResult;
-      if (extra > 0) {
-        process.stdout.write(`(note) ignoring ${extra} additional tool call(s)\n`);
+      messages.push({ role: "assistant", content: assistantText });
+
+      const [tool, ...remaining] = tools;
+      if (remaining.length > 0) {
+        process.stdout.write(
+          `(note) ${remaining.length} additional tool call(s) queued; will let the model decide next step\n`
+        );
       }
+
       process.stdout.write(`(tool request) run: ${tool.cmd}\n`);
-      const approve = await question("Run? [y/N] ");
+      const approve = await question("Run? [Y/n] ");
       if (approve === null) break;
-      if (!/^y(es)?$/i.test(approve.trim())) {
+      const approveText = approve.trim();
+      if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
         const content = "Command not run (user denied).";
         messages.push({ role: "tool", name: "run", content });
         continue;
@@ -205,7 +196,7 @@ async function main() {
       });
       const content = formatToolResult(result);
       messages.push({ role: "tool", name: "run", content });
-      break;
+      continue;
     }
   }
 }

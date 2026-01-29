@@ -23,6 +23,14 @@ Most code agents grow lots of UI and infrastructure quickly. This repo aims for 
 
 The CLI executes the command (with basic time/output limits) and sends the result back to the model.
 
+## Install
+
+Quick install (pulls raw files from `main`, no build step):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bash
+```
+
 ## Repo docs
 
 - See **PLAN.md** for the concrete build plan and design constraints.
