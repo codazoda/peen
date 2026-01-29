@@ -368,8 +368,7 @@ async function main() {
   const { runCommand, formatToolResult } = await import("./tools.js");
   const SYSTEM_PROMPT = readFileSync(new URL("./prompt/system.txt", import.meta.url), "utf-8").trim();
 
-  //const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
-  const host = process.env.OLLAMA_HOST || "http://172.30.200.200:11434";
+  const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
 
   let tags;
   try {
