@@ -383,7 +383,7 @@ async function main() {
     const preferred = "llama3.1:latest";
     const hasPreferred = tags.some((t) => t?.name === preferred);
     model = hasPreferred ? preferred : tags[0]?.name || "llama3";
-    process.stdout.write(`Using model: ${model}\n\n`);
+    process.stdout.write(`Server: ${host}\nUsing model: ${model}\n\n`);
   }
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
