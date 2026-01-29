@@ -172,6 +172,22 @@ async function ensureLatest({ installOnly }) {
   return "up-to-date";
 }
 
+function printBanner(version) {
+  const lines = [
+    "                                  ",
+    "... ...    ....    ....  .. ...   ",
+    " ||'  || .|...|| .|...||  ||  ||  ",
+    " ||    | ||      ||       ||  ||  ",
+    " ||...'   '|...'  '|...' .||. ||. ",
+    " ||                               ",
+    "''''                              ",
+  ];
+  process.stdout.write(`${lines.join("\n")}\n`);
+  if (version) {
+    process.stdout.write(`version: ${version}\n\n`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
@@ -185,6 +201,11 @@ async function main() {
   if (updateStatus === "installed") {
     process.exit(0);
   }
+
+  const { installDir } = getInstallPaths();
+  const localSha = await readLocalSha(installDir);
+  const version = localSha ? localSha.slice(0, 8) : null;
+  printBanner(version);
 
   const { checkOllama, streamChat } = await import("./ollama.js");
   const { runCommand, formatToolResult } = await import("./tools.js");
