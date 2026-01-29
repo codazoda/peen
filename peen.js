@@ -7,6 +7,13 @@ import os from "os";
 
 const REPO_RAW = "https://raw.githubusercontent.com/codazoda/peen/main";
 const REPO_API = "https://api.github.com/repos/codazoda/peen/commits/main";
+const NETWORK_TIMEOUT_MS = 1500;
+const UPDATE_STATUS = {
+  INSTALLED: "installed",
+  SKIPPED: "skipped",
+  UP_TO_DATE: "up-to-date",
+};
+const VERSION_RE = /^0\.1\.\d+$/;
 
 function parseArgs(argv) {
   const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false };
@@ -64,6 +71,24 @@ function extractToolCalls(text) {
   return tools;
 }
 
+function printAvailableModels(tags) {
+  const models = tags.map((t) => t?.name).filter(Boolean);
+  if (models.length === 0) {
+    process.stdout.write("No models available.\n");
+    return;
+  }
+  process.stdout.write(`Available models:\n${models.join("\n")}\n`);
+}
+
+async function readText(filePath) {
+  return await fs.readFile(filePath, "utf-8");
+}
+
+async function readJson(filePath) {
+  const raw = await readText(filePath);
+  return JSON.parse(raw);
+}
+
 async function isGitRepo(root) {
   try {
     const stat = await fs.stat(path.join(root, ".git"));
@@ -82,7 +107,7 @@ function getInstallPaths() {
   };
 }
 
-async function fetchJson(url, { timeoutMs = 1500 } = {}) {
+async function fetchWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const res = await fetch(url, {
@@ -90,25 +115,24 @@ async function fetchJson(url, { timeoutMs = 1500 } = {}) {
     signal: controller.signal,
   });
   clearTimeout(timer);
+  return res;
+}
+
+async function fetchJson(url, { timeoutMs = NETWORK_TIMEOUT_MS } = {}) {
+  const res = await fetchWithTimeout(url, timeoutMs);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
 
-async function fetchText(url, { timeoutMs = 1500 } = {}) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  const res = await fetch(url, {
-    headers: { "User-Agent": "peen" },
-    signal: controller.signal,
-  });
-  clearTimeout(timer);
+async function fetchText(url, { timeoutMs = NETWORK_TIMEOUT_MS } = {}) {
+  const res = await fetchWithTimeout(url, timeoutMs);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.text();
 }
 
 async function readLocalSha(installDir) {
   try {
-    const data = await fs.readFile(path.join(installDir, "LATEST_SHA"), "utf-8");
+    const data = await readText(path.join(installDir, "LATEST_SHA"));
     return data.trim() || null;
   } catch (err) {
     return null;
@@ -118,17 +142,16 @@ async function readLocalSha(installDir) {
 async function readLocalVersion(installDir) {
   const versionPath = path.join(installDir, "VERSION");
   try {
-    const raw = (await fs.readFile(versionPath, "utf-8")).trim();
-    if (/^0\.1\.\d+$/.test(raw)) return raw;
+    const raw = (await readText(versionPath)).trim();
+    if (VERSION_RE.test(raw)) return raw;
   } catch (err) {
     // fall through
   }
 
   const pkgPath = path.join(installDir, "package.json");
   try {
-    const pkgRaw = await fs.readFile(pkgPath, "utf-8");
-    const pkg = JSON.parse(pkgRaw);
-    if (typeof pkg?.version === "string" && /^0\.1\.\d+$/.test(pkg.version)) {
+    const pkg = await readJson(pkgPath);
+    if (typeof pkg?.version === "string" && VERSION_RE.test(pkg.version)) {
       return pkg.version;
     }
   } catch (err) {
@@ -138,7 +161,7 @@ async function readLocalVersion(installDir) {
 }
 
 async function fetchRemoteSha() {
-  const data = await fetchJson(REPO_API, { timeoutMs: 1500 });
+  const data = await fetchJson(REPO_API, { timeoutMs: NETWORK_TIMEOUT_MS });
   return typeof data?.sha === "string" ? data.sha : null;
 }
 
@@ -190,24 +213,24 @@ async function ensureLatest({ installOnly }) {
   } catch (err) {
     if (!localSha) {
       process.stdout.write("(update) offline or cannot check latest; continuing with installed version\n");
-      return { status: installOnly ? "installed" : "skipped", installDir };
+      return { status: installOnly ? UPDATE_STATUS.INSTALLED : UPDATE_STATUS.SKIPPED, installDir };
     }
     process.stdout.write("(update) cannot check latest; continuing with installed version\n");
-    return { status: installOnly ? "installed" : "skipped", installDir };
+    return { status: installOnly ? UPDATE_STATUS.INSTALLED : UPDATE_STATUS.SKIPPED, installDir };
   }
 
   if (!localSha || localSha !== remoteSha) {
     process.stdout.write("(update) installing latest peen...\n");
     await installLatest(installDir, binDir, remoteSha);
-    return { status: "installed", installDir };
+    return { status: UPDATE_STATUS.INSTALLED, installDir };
   }
 
   if (installOnly) {
     process.stdout.write("peen is already up to date.\n");
-    return { status: "installed", installDir };
+    return { status: UPDATE_STATUS.INSTALLED, installDir };
   }
 
-  return { status: "up-to-date", installDir };
+  return { status: UPDATE_STATUS.UP_TO_DATE, installDir };
 }
 
 async function relaunchInstalled(installDir, argv) {
@@ -247,7 +270,7 @@ async function main() {
   }
 
   const update = await ensureLatest({ installOnly: args.installOnly });
-  if (update.status === "installed") {
+  if (update.status === UPDATE_STATUS.INSTALLED) {
     if (args.installOnly) process.exit(0);
     if (!process.env.PEEN_RELAUNCHED) {
       const code = await relaunchInstalled(update.installDir, process.argv.slice(2));
@@ -337,12 +360,7 @@ async function main() {
       if (input === "/model" || input.startsWith("/model ")) {
         const next = input.slice("/model".length).trim();
         if (!next) {
-          const models = tags.map((t) => t?.name).filter(Boolean);
-          if (models.length === 0) {
-            process.stdout.write("No models available.\n");
-          } else {
-            process.stdout.write(`Available models:\n${models.join("\n")}\n`);
-          }
+          printAvailableModels(tags);
         } else {
           currentModel = next;
           messages = [systemMessage];
