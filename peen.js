@@ -81,25 +81,33 @@ function getInstallPaths() {
   };
 }
 
-async function fetchJson(url) {
+async function fetchJson(url, { timeoutMs = 1500 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const res = await fetch(url, {
     headers: { "User-Agent": "peen" },
+    signal: controller.signal,
   });
+  clearTimeout(timer);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
 }
 
-async function fetchText(url) {
+async function fetchText(url, { timeoutMs = 1500 } = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const res = await fetch(url, {
     headers: { "User-Agent": "peen" },
+    signal: controller.signal,
   });
+  clearTimeout(timer);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.text();
 }
 
 async function readLocalSha(installDir) {
   try {
-    const data = await fs.readFile(path.join(installDir, "VERSION"), "utf-8");
+    const data = await fs.readFile(path.join(installDir, "LATEST_SHA"), "utf-8");
     return data.trim() || null;
   } catch (err) {
     return null;
@@ -107,7 +115,7 @@ async function readLocalSha(installDir) {
 }
 
 async function fetchRemoteSha() {
-  const data = await fetchJson(REPO_API);
+  const data = await fetchJson(REPO_API, { timeoutMs: 1500 });
   return typeof data?.sha === "string" ? data.sha : null;
 }
 
@@ -123,10 +131,18 @@ async function installLatest(installDir, binDir, sha) {
   const packageJson = JSON.stringify({ type: "module" }, null, 2);
   await fs.writeFile(path.join(installDir, "package.json"), packageJson, "utf-8");
 
-  const files = ["peen.js", "ollama.js", "tools.js", "prompt/system.txt"];
+  const files = ["peen.js", "ollama.js", "tools.js", "prompt/system.txt", "VERSION"];
   for (const file of files) {
-    const content = await fetchText(`${REPO_RAW}/${file}`);
-    await fs.writeFile(path.join(installDir, file), content, "utf-8");
+    try {
+      const content = await fetchText(`${REPO_RAW}/${file}`);
+      await fs.writeFile(path.join(installDir, file), content, "utf-8");
+    } catch (err) {
+      if (file === "VERSION") {
+        await fs.writeFile(path.join(installDir, file), "0.1.0\n", "utf-8");
+        continue;
+      }
+      throw err;
+    }
   }
 
   await fs.chmod(path.join(installDir, "peen.js"), 0o755);
@@ -134,9 +150,11 @@ async function installLatest(installDir, binDir, sha) {
   const shim = `#!/usr/bin/env bash
 set -euo pipefail
 exec node "${installDir}/peen.js" "$@"
-`;
+  `;
   await writeExecutable(path.join(binDir, "peen"), shim);
-  await fs.writeFile(path.join(installDir, "VERSION"), sha || "unknown", "utf-8");
+  if (sha) {
+    await fs.writeFile(path.join(installDir, "LATEST_SHA"), `${sha}\n`, "utf-8");
+  }
 }
 
 async function ensureLatest({ installOnly }) {
@@ -148,10 +166,8 @@ async function ensureLatest({ installOnly }) {
     remoteSha = await fetchRemoteSha();
   } catch (err) {
     if (!localSha) {
-      process.stdout.write("(update) cannot check latest; installing anyway\n");
-      await installLatest(installDir, binDir, "unknown");
-      process.stdout.write("Installed peen. Please start it again.\n");
-      return "installed";
+      process.stdout.write("(update) offline or cannot check latest; continuing with installed version\n");
+      return installOnly ? "installed" : "skipped";
     }
     process.stdout.write("(update) cannot check latest; continuing with installed version\n");
     return installOnly ? "installed" : "skipped";
