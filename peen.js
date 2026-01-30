@@ -9,7 +9,8 @@ const REPO_RAW = "https://raw.githubusercontent.com/codazoda/peen/main";
 const REPO_API = "https://api.github.com/repos/codazoda/peen/commits/main";
 const NETWORK_TIMEOUT_MS = 1500;
 const PROMPT_BG = "\x1b[100m";
-const PROMPT_FG = "\x1b[97m";
+const PROMPT_PIPE_FG = "\x1b[94m";
+const PROMPT_TEXT_FG = "\x1b[97m";
 const PROMPT_RESET = "\x1b[0m";
 const TOOL_CMD_RED = "\x1b[31m";
 const UPDATE_STATUS = {
@@ -311,7 +312,7 @@ async function readMultilineInput(question) {
   const lines = [];
   let first = true;
   while (true) {
-    const prompt = first ? "> " : "... ";
+    const prompt = `${PROMPT_PIPE_FG}|${PROMPT_TEXT_FG} `;
     const line = await question(prompt);
     if (line === null) return null;
     if (line.endsWith("\\")) {
@@ -397,7 +398,7 @@ async function main() {
   const question = (q) =>
     new Promise((resolve) => {
       if (rlClosed) return resolve(null);
-      rl.question(`${PROMPT_BG}${PROMPT_FG}${q}`, (answer) => {
+      rl.question(`${PROMPT_BG}${q}`, (answer) => {
         process.stdout.write(`${PROMPT_RESET}\r\x1b[2K`);
         resolve(answer);
       });
