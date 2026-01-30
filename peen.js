@@ -8,7 +8,6 @@ import os from "os";
 const REPO_RAW = "https://raw.githubusercontent.com/codazoda/peen/main";
 const REPO_API = "https://api.github.com/repos/codazoda/peen/commits/main";
 const NETWORK_TIMEOUT_MS = 1500;
-const PROMPT_BG = "\x1b[100m";
 const PROMPT_PIPE_FG = "\x1b[94m";
 const PROMPT_TEXT_FG = "\x1b[97m";
 const PROMPT_RESET = "\x1b[0m";
@@ -142,6 +141,7 @@ function printAvailableModels(tags) {
     return;
   }
   process.stdout.write(`Available models:\n${models.join("\n")}\n`);
+  writeBlackBlankLine();
 }
 
 async function readText(filePath) {
@@ -326,6 +326,10 @@ async function readMultilineInput(question) {
   return lines.join("\n");
 }
 
+function writeBlackBlankLine() {
+  process.stdout.write(`\r${PROMPT_RESET}\x1b[2K\n`);
+}
+
 function printBanner(version) {
   const lines = [
     "                                  ",
@@ -398,7 +402,7 @@ async function main() {
   const question = (q) =>
     new Promise((resolve) => {
       if (rlClosed) return resolve(null);
-      rl.question(`${PROMPT_BG}${q}`, (answer) => {
+      rl.question(`${q}`, (answer) => {
         process.stdout.write(`${PROMPT_RESET}\r\x1b[2K`);
         resolve(answer);
       });
@@ -430,7 +434,7 @@ async function main() {
     const input = await readMultilineInput(question);
     if (input === null) break;
     if (!input) continue;
-    process.stdout.write("\n");
+    writeBlackBlankLine();
 
     if (input.startsWith("/")) {
       if (input === "/exit") {
@@ -477,17 +481,19 @@ async function main() {
 
       if (shouldStream) {
         if (!assistantText.endsWith("\n")) process.stdout.write("\n");
-        process.stdout.write("\n");
+        writeBlackBlankLine();
       }
 
       const todoItemsInText = parseTodoList(assistantText);
       if (!todoState && todoItemsInText) {
         todoState = { pendingList: false, items: todoItemsInText, index: 0 };
         if (!shouldStream) {
-          process.stdout.write(`${assistantText}\n\n`);
+          process.stdout.write(`${assistantText}\n`);
+          writeBlackBlankLine();
         }
         messages.push({ role: "assistant", content: assistantText });
-        process.stdout.write(`${formatTodoList(todoState.items, -1)}\n\n`);
+        process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
+        writeBlackBlankLine();
         messages.push({
           role: "user",
           content: `Proceed with step 1: ${todoState.items[0]}`,
@@ -501,7 +507,8 @@ async function main() {
       if (todoState && !todoState.pendingList && todoItemsInText) {
         const filtered = stripTodoBlocks(assistantText);
         if (!shouldStream && filtered) {
-          process.stdout.write(`${filtered}\n\n`);
+          process.stdout.write(`${filtered}\n`);
+          writeBlackBlankLine();
         }
         messages.push({ role: "assistant", content: assistantText });
         messages.push({
@@ -515,7 +522,8 @@ async function main() {
         const items = todoItemsInText;
         if (!items) {
           if (!shouldStream) {
-            process.stdout.write(`${assistantText}\n\n`);
+            process.stdout.write(`${assistantText}\n`);
+            writeBlackBlankLine();
           }
           messages.push({ role: "assistant", content: assistantText });
           messages.push({
@@ -532,10 +540,12 @@ async function main() {
         todoState.pendingList = false;
         todoState.index = 0;
         if (!shouldStream) {
-          process.stdout.write(`${assistantText}\n\n`);
+          process.stdout.write(`${assistantText}\n`);
+          writeBlackBlankLine();
         }
         messages.push({ role: "assistant", content: assistantText });
-        process.stdout.write(`${formatTodoList(todoState.items, -1)}\n\n`);
+        process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
+        writeBlackBlankLine();
         messages.push({
           role: "user",
           content: `Proceed with step 1: ${todoState.items[0]}`,
@@ -548,14 +558,16 @@ async function main() {
       }
 
       if (!shouldStream) {
-        process.stdout.write(`${assistantText}\n\n`);
+        process.stdout.write(`${assistantText}\n`);
+        writeBlackBlankLine();
       }
 
       const tools = extractToolCalls(assistantText);
       if (tools.length === 0) {
         messages.push({ role: "assistant", content: assistantText });
         if (todoState && todoState.index < todoState.items.length) {
-          process.stdout.write(`${formatTodoList(todoState.items, todoState.index)}\n\n`);
+          process.stdout.write(`${formatTodoList(todoState.items, todoState.index)}\n`);
+          writeBlackBlankLine();
           todoState.index += 1;
           if (todoState.index >= todoState.items.length) {
             todoState = null;
@@ -587,13 +599,10 @@ async function main() {
         break;
       }
 
-      const desc = describeToolCall(tools[0]);
       const combined = runnable.join(" && ");
-      process.stdout.write(`${desc}\n`);
       process.stdout.write(`${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
-      process.stdout.write(`${PROMPT_RESET}\n`);
       const approve = await question("Run? [Y/n] ");
-      if (approve !== null) process.stdout.write("\n");
+      if (approve !== null) writeBlackBlankLine();
       if (approve === null) break;
       const approveText = approve.trim();
       if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
