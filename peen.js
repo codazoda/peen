@@ -683,7 +683,9 @@ async function main() {
         });
         messages.push({ role: "tool", name: "run", content: formatToolResult(result) });
 
-        if (result.exitCode === 0) {
+        // Only prompt verification for write operations, not reads
+        const isReadOnly = /^\s*(cat|ls|head|tail|grep|find|wc|file|stat|pwd|echo|tree)\s/.test(combined);
+        if (result.exitCode === 0 && !isReadOnly) {
           messages.push({
             role: "user",
             content: "If that was a write operation, verify it succeeded. Then continue with your task.",
