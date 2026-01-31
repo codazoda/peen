@@ -3,9 +3,10 @@ Re-emit ONLY one corrected one-line JSON tool call.
 Rules:
 - Use "tool":"run" for shell commands OR "tool":"write" for creating files
 - Use a single line of JSON with double quotes for keys/values
-- Escape any double quotes inside strings, or use single quotes in shell commands
-- For newlines in file content, use \n (e.g., "line1\nline2")
-- Do not include extra braces, extra lines, or any other text
+- Escape double quotes as \" and backslashes as \\
+- For newlines use \n (e.g., "line1\nline2")
+- Do NOT escape parentheses or brackets - use ( ) [ ] directly, not \( \) \[ \]
+- Do not include extra text before or after the JSON
 Examples:
 {"tool":"run","cmd":"find . -type f -name '*.js' -print"}
 {"tool":"write","path":"hello.js","content":"console.log('Hello');"}
