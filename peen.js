@@ -163,6 +163,7 @@ function isNoopEcho(cmd) {
   return true;
 }
 
+
 function printAvailableModels(tags) {
   const models = tags.map((t) => t?.name).filter(Boolean);
   if (models.length === 0) {
@@ -668,6 +669,14 @@ async function main() {
       });
       const content = formatToolResult(result);
       messages.push({ role: "tool", name: "run", content });
+
+      // Prompt model to verify write operations
+      if (result.exitCode === 0) {
+        messages.push({
+          role: "user",
+          content: "If that was a write operation, verify it succeeded. Then continue with your task.",
+        });
+      }
       continue;
     }
   }
