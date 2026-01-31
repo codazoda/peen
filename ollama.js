@@ -16,6 +16,23 @@ export async function checkOllama(host) {
   }
 }
 
+function hasToolCall(text) {
+  const lines = text.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) continue;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj?.tool === "run" && typeof obj?.cmd === "string") {
+        return true;
+      }
+    } catch (err) {
+      // Not valid JSON
+    }
+  }
+  return false;
+}
+
 export async function streamChat({ host, model, messages, onToken, debug }) {
   const url = new URL("/api/chat", host);
   const bodyData = JSON.stringify({ model, messages, stream: true });
@@ -32,6 +49,7 @@ export async function streamChat({ host, model, messages, onToken, debug }) {
 
     let fullText = "";
     let buffer = "";
+    let stopped = false;
 
     curl.stdout.on("data", (chunk) => {
       buffer += chunk.toString("utf-8");
@@ -53,6 +71,14 @@ export async function streamChat({ host, model, messages, onToken, debug }) {
         if (typeof delta === "string" && delta.length > 0) {
           onToken?.(delta);
           fullText += delta;
+
+          // Stop early if we detect a tool call
+          if (!stopped && hasToolCall(fullText)) {
+            stopped = true;
+            curl.kill();
+            resolve(fullText);
+            return;
+          }
         }
 
         if (jsonChunk?.done) {
@@ -68,6 +94,8 @@ export async function streamChat({ host, model, messages, onToken, debug }) {
     });
 
     curl.on("close", (code) => {
+      if (stopped) return; // Already resolved due to tool call
+
       if (buffer.trim().length > 0) {
         try {
           const jsonChunk = JSON.parse(buffer.trim());
@@ -89,6 +117,7 @@ export async function streamChat({ host, model, messages, onToken, debug }) {
     });
 
     curl.on("error", (err) => {
+      if (stopped) return; // Already resolved due to tool call
       reject(new Error(`Ollama connection failed: ${err.message}`));
     });
   });
