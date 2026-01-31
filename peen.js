@@ -100,6 +100,7 @@ function parseToolJsonLine(line) {
   try {
     const obj = JSON.parse(trimmed);
     if (obj?.tool === "run" && typeof obj?.cmd === "string") return obj;
+    if (obj?.tool === "write" && typeof obj?.path === "string" && typeof obj?.content === "string") return obj;
   } catch (err) {
     return null;
   }
@@ -121,7 +122,8 @@ function findInvalidToolLine(text) {
   for (const raw of lines) {
     const line = raw.trim();
     if (!line.startsWith("{") || !line.endsWith("}")) continue;
-    if (!line.includes("\"tool\"") || !line.includes("\"cmd\"")) continue;
+    if (!line.includes("\"tool\"")) continue;
+    if (!line.includes("\"cmd\"") && !line.includes("\"path\"")) continue;
     if (!parseToolJsonLine(line)) return line;
   }
   return null;
@@ -129,13 +131,14 @@ function findInvalidToolLine(text) {
 
 function findUnsupportedToolLine(text) {
   const lines = text.split("\n");
+  const supportedTools = ["run", "write"];
   for (const raw of lines) {
     const line = raw.trim();
     if (!line.startsWith("{") || !line.endsWith("}")) continue;
-    if (!line.includes("\"tool\"") || !line.includes("\"cmd\"")) continue;
+    if (!line.includes("\"tool\"")) continue;
     try {
       const obj = JSON.parse(line);
-      if (obj && typeof obj.tool === "string" && typeof obj.cmd === "string" && obj.tool !== "run") {
+      if (obj && typeof obj.tool === "string" && !supportedTools.includes(obj.tool)) {
         return obj.tool;
       }
     } catch (err) {
@@ -634,10 +637,11 @@ async function main() {
 
       messages.push({ role: "assistant", content: assistantText });
 
-      const runnable = tools
-        .map((entry) => entry.tool.cmd)
-        .filter((cmd) => !isNoopEcho(cmd));
-      const skipped = tools.length - runnable.length;
+      // Separate run and write tools
+      const runTools = tools.filter((entry) => entry.tool.tool === "run" && !isNoopEcho(entry.tool.cmd));
+      const writeTools = tools.filter((entry) => entry.tool.tool === "write");
+      const skipped = tools.length - runTools.length - writeTools.length;
+
       if (skipped > 0) {
         messages.push({
           role: "tool",
@@ -645,36 +649,66 @@ async function main() {
           content: "One or more echo-only tool calls were skipped.",
         });
       }
-      if (runnable.length === 0) {
+
+      if (runTools.length === 0 && writeTools.length === 0) {
         break;
       }
 
-      const combined = runnable.join(" && ");
-      process.stdout.write(`\n${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
-      const approve = await question("Run? [Y/n] ");
-      if (approve === null) break;
-      const approveText = approve.trim();
-      if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
-        const content = "Command not run (user denied).";
-        messages.push({ role: "tool", name: "run", content });
-        todoState = null;
-        break;
-      }
+      // Handle run tools
+      if (runTools.length > 0) {
+        const combined = runTools.map((entry) => entry.tool.cmd).join(" && ");
+        process.stdout.write(`\n${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
+        const approve = await question("Run? [Y/n] ");
+        if (approve === null) break;
+        const approveText = approve.trim();
+        if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
+          messages.push({ role: "tool", name: "run", content: "Command not run (user denied)." });
+          todoState = null;
+          break;
+        }
 
-      const result = await runCommand({
-        cmd: combined,
-        cwd: args.root || process.cwd(),
-        dangerous: args.dangerous,
-      });
-      const content = formatToolResult(result);
-      messages.push({ role: "tool", name: "run", content });
-
-      // Prompt model to verify write operations
-      if (result.exitCode === 0) {
-        messages.push({
-          role: "user",
-          content: "If that was a write operation, verify it succeeded. Then continue with your task.",
+        const result = await runCommand({
+          cmd: combined,
+          cwd: args.root || process.cwd(),
+          dangerous: args.dangerous,
         });
+        messages.push({ role: "tool", name: "run", content: formatToolResult(result) });
+
+        if (result.exitCode === 0) {
+          messages.push({
+            role: "user",
+            content: "If that was a write operation, verify it succeeded. Then continue with your task.",
+          });
+        }
+      }
+
+      // Handle write tools
+      for (const entry of writeTools) {
+        const { path: filePath, content: fileContent } = entry.tool;
+        const preview = fileContent.length > 200 ? fileContent.slice(0, 200) + "..." : fileContent;
+        process.stdout.write(`\n${TOOL_CMD_RED}write: ${filePath}${PROMPT_RESET}\n`);
+        process.stdout.write(`${preview}\n`);
+        const approve = await question("Write? [Y/n] ");
+        if (approve === null) break;
+        const approveText = approve.trim();
+        if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
+          messages.push({ role: "tool", name: "write", content: "File not written (user denied)." });
+          todoState = null;
+          break;
+        }
+
+        try {
+          const fullPath = path.resolve(args.root || process.cwd(), filePath);
+          await fs.mkdir(path.dirname(fullPath), { recursive: true });
+          await fs.writeFile(fullPath, fileContent, "utf-8");
+          messages.push({ role: "tool", name: "write", content: `File written: ${filePath}` });
+          messages.push({
+            role: "user",
+            content: "Verify the file was written correctly, then continue with your task.",
+          });
+        } catch (err) {
+          messages.push({ role: "tool", name: "write", content: `Error writing file: ${err.message}` });
+        }
       }
       continue;
     }

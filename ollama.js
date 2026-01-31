@@ -26,6 +26,9 @@ function hasToolCall(text) {
       if (obj?.tool === "run" && typeof obj?.cmd === "string") {
         return true;
       }
+      if (obj?.tool === "write" && typeof obj?.path === "string" && typeof obj?.content === "string") {
+        return true;
+      }
     } catch (err) {
       // Not valid JSON
     }
