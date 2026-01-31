@@ -1,9 +1,11 @@
 Your tool call was invalid or used an unsupported tool name.
 Re-emit ONLY one corrected one-line JSON tool call.
 Rules:
-- Use "tool":"run"
+- Use "tool":"run" for shell commands OR "tool":"write" for creating files
 - Use a single line of JSON with double quotes for keys/values
-- Escape any double quotes inside cmd, or use single quotes in the shell command
+- Escape any double quotes inside strings, or use single quotes in shell commands
+- For newlines in file content, use \n (e.g., "line1\nline2")
 - Do not include extra braces, extra lines, or any other text
-Example:
+Examples:
 {"tool":"run","cmd":"find . -type f -name '*.js' -print"}
+{"tool":"write","path":"hello.js","content":"console.log('Hello');"}

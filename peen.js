@@ -618,6 +618,15 @@ async function main() {
           messages.push({ role: "user", content: TOOL_REPAIR_PROMPT });
           continue;
         }
+        // If text looks like it has a tool call but we couldn't parse it, try one more repair
+        const looksLikeToolCall = assistantText.includes('"tool"') &&
+          (assistantText.includes('"run"') || assistantText.includes('"write"'));
+        if (looksLikeToolCall && toolRepairAttempts < 3) {
+          toolRepairAttempts += 1;
+          process.stdout.write(`(tool repair prompt)\n${TOOL_REPAIR_PROMPT}\n\n`);
+          messages.push({ role: "user", content: TOOL_REPAIR_PROMPT });
+          continue;
+        }
         if (todoState && todoState.index < todoState.items.length) {
           process.stdout.write(`${formatTodoList(todoState.items, todoState.index)}\n`);
           writeBlackBlankLine();
