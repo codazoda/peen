@@ -116,6 +116,35 @@ function extractToolCalls(text) {
   return tools;
 }
 
+function findInvalidToolLine(text) {
+  const lines = text.split("\n");
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith("{") || !line.endsWith("}")) continue;
+    if (!line.includes("\"tool\"") || !line.includes("\"cmd\"")) continue;
+    if (!parseToolJsonLine(line)) return line;
+  }
+  return null;
+}
+
+function findUnsupportedToolLine(text) {
+  const lines = text.split("\n");
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line.startsWith("{") || !line.endsWith("}")) continue;
+    if (!line.includes("\"tool\"") || !line.includes("\"cmd\"")) continue;
+    try {
+      const obj = JSON.parse(line);
+      if (obj && typeof obj.tool === "string" && typeof obj.cmd === "string" && obj.tool !== "run") {
+        return obj.tool;
+      }
+    } catch (err) {
+      continue;
+    }
+  }
+  return null;
+}
+
 function describeToolCall(entry) {
   const { lines, lineIndex } = entry;
   for (let i = lineIndex - 1; i >= 0; i -= 1) {
@@ -372,6 +401,10 @@ async function main() {
   const { checkOllama, streamChat } = await import("./ollama.js");
   const { runCommand, formatToolResult } = await import("./tools.js");
   const SYSTEM_PROMPT = readFileSync(new URL("./prompt/system.txt", import.meta.url), "utf-8").trim();
+  const TOOL_REPAIR_PROMPT = readFileSync(
+    new URL("./prompt/tool_repair.txt", import.meta.url),
+    "utf-8"
+  ).trim();
 
   const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
 
@@ -462,6 +495,7 @@ async function main() {
     }
 
     messages.push({ role: "user", content: input });
+    let toolRepairAttempts = 0;
 
     while (true) {
       let assistantText = "";
@@ -565,6 +599,20 @@ async function main() {
       const tools = extractToolCalls(assistantText);
       if (tools.length === 0) {
         messages.push({ role: "assistant", content: assistantText });
+        const invalidToolLine = findInvalidToolLine(assistantText);
+        if (invalidToolLine && toolRepairAttempts < 2) {
+          toolRepairAttempts += 1;
+          process.stdout.write(`(tool repair prompt)\n${TOOL_REPAIR_PROMPT}\n\n`);
+          messages.push({ role: "user", content: TOOL_REPAIR_PROMPT });
+          continue;
+        }
+        const unsupportedTool = findUnsupportedToolLine(assistantText);
+        if (unsupportedTool && toolRepairAttempts < 2) {
+          toolRepairAttempts += 1;
+          process.stdout.write(`(tool repair prompt)\n${TOOL_REPAIR_PROMPT}\n\n`);
+          messages.push({ role: "user", content: TOOL_REPAIR_PROMPT });
+          continue;
+        }
         if (todoState && todoState.index < todoState.items.length) {
           process.stdout.write(`${formatTodoList(todoState.items, todoState.index)}\n`);
           writeBlackBlankLine();
