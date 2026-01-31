@@ -270,7 +270,7 @@ async function installLatest(installDir, binDir, sha) {
   const packageJson = JSON.stringify({ type: "module" }, null, 2);
   await fs.writeFile(path.join(installDir, "package.json"), packageJson, "utf-8");
 
-  const files = ["peen.js", "ollama.js", "tools.js", "prompt/system.txt", "VERSION"];
+  const files = ["peen.js", "ollama.js", "tools.js", "prompt/system.txt", "prompt/tool_repair.txt", "VERSION"];
   for (const file of files) {
     try {
       const content = await fetchText(`${REPO_RAW}/${file}`);
