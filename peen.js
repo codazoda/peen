@@ -461,6 +461,7 @@ async function main() {
       rl.close();
       process.exit(0);
     }
+    writeBlackBlankLine();
   }
 
   while (true) {
