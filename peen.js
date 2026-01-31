@@ -652,7 +652,6 @@ async function main() {
       const combined = runnable.join(" && ");
       process.stdout.write(`\n${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
       const approve = await question("Run? [Y/n] ");
-      if (approve !== null) writeBlackBlankLine();
       if (approve === null) break;
       const approveText = approve.trim();
       if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
