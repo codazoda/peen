@@ -1,6 +1,6 @@
 {
   "name": "peen",
-  "version": "0.1.28",
+  "version": "0.1.29",
   "private": true,
   "type": "module",
   "description": "Minimal Node CLI agent for Ollama with streaming + run(cmd) tool.",
