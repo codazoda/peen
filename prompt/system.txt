@@ -44,11 +44,13 @@ You have two tools: run and write
 ### write - Create or overwrite files
 {"tool":"write","path":"filename.txt","content":"file contents here"}
 
-For multi-line content, use \n for newlines:
+For multi-line content, use \n for newlines (NOT actual line breaks):
 {"tool":"write","path":"hello.js","content":"const msg = 'Hello';\nconsole.log(msg);"}
 
-IMPORTANT: In JSON strings, only these escapes are valid: \" \\ \/ \b \f \n \r \t
-Do NOT escape parentheses \( or brackets \[ - just use them directly: ( ) [ ]
+IMPORTANT JSON rules:
+- The entire tool call must be on ONE LINE
+- For newlines in content, use \n (the two characters backslash-n), NOT an actual line break
+- Valid escapes: \" \\ \n \r \t - Do NOT escape ( ) [ ] - use them directly
 
 Critical rules:
 - Only use "run" or "write" as tool names

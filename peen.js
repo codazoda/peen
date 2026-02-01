@@ -112,7 +112,27 @@ function extractToolCalls(text) {
   const tools = [];
   for (let i = 0; i < lines.length; i += 1) {
     const tool = parseToolJsonLine(lines[i]);
-    if (tool) tools.push({ tool, lineIndex: i, lines });
+    if (tool) {
+      tools.push({ tool, lineIndex: i, lines });
+      continue;
+    }
+    // Try to handle multi-line write tool calls (model used real newlines instead of \n)
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith('{"tool":"write"') || trimmed.startsWith('{"tool": "write"')) {
+      // Collect lines until we find one ending with }
+      let combined = trimmed;
+      let j = i + 1;
+      while (j < lines.length && !combined.endsWith("}")) {
+        combined += "\\n" + lines[j].trim();
+        j += 1;
+      }
+      // Try to parse the reconstructed JSON
+      const fixedTool = parseToolJsonLine(combined);
+      if (fixedTool) {
+        tools.push({ tool: fixedTool, lineIndex: i, lines });
+        i = j - 1; // Skip the lines we consumed
+      }
+    }
   }
   return tools;
 }
