@@ -430,7 +430,7 @@ async function main() {
     "utf-8"
   ).trim();
 
-  const host = process.env.OLLAMA_HOST || "http://127.0.0.1:11434";
+  const host = process.env.PEEN_HOST || "http://127.0.0.1:11434";
 
   let tags;
   try {
@@ -440,7 +440,7 @@ async function main() {
     process.exit(1);
   }
 
-  let model = args.model || process.env.MODEL || null;
+  let model = args.model || process.env.PEEN_MODEL || null;
   if (!model) {
     const preferred = "qwen2.5-coder:14b";
     const hasPreferred = tags.some((t) => t?.name === preferred);

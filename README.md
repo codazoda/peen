@@ -12,7 +12,7 @@ This project is a minimal, experimental tool designed to solve that. Instead of 
 
 ## How it works
 
-- Configure Ollama via `OLLAMA_HOST` (defaults to `http://127.0.0.1:11434`).
+- Configure Ollama via `PEEN_HOST` (defaults to `http://127.0.0.1:11434`).
 - On startup, the CLI checks that Ollama is reachable (`/api/tags`) and exits if not.
 - You type a request; the assistant response streams live.
 - If the model needs to inspect or edit files, it requests a tool call by outputting one-line JSON like:
@@ -33,10 +33,43 @@ curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bas
 
 On each start, `peen` checks GitHub for the latest version and self-updates if needed.
 
+## Configuration
+
+Configure peen using environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PEEN_HOST` | `http://127.0.0.1:11434` | Ollama server URL |
+| `PEEN_MODEL` | (interactive prompt) | Model to use |
+
+### Using Ollama on a different machine
+
+To connect to Ollama running on another machine:
+
+```bash
+export PEEN_HOST=http://192.168.1.100:11434
+peen
+```
+
+### Changing the model
+
+Set the model via environment variable:
+
+```bash
+export PEEN_MODEL=qwen2.5-coder:14b
+peen
+```
+
+Or pass it as a command-line argument:
+
+```bash
+peen --model qwen2.5-coder:14b
+```
+
 ## Recommended models
 
 - qwen2.5-coder:14b
-- qwen3-coder:30b (Requries GPU)
+- qwen3-coder:30b (Requires GPU)
 
 ## Versioning
 
