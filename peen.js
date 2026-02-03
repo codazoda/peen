@@ -693,7 +693,7 @@ async function main() {
       // Handle run tools
       if (runTools.length > 0) {
         const combined = runTools.map((entry) => entry.tool.cmd).join(" && ");
-        process.stdout.write(`\n${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
+        process.stdout.write(`${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
         const approve = await question("Run? [Y/n] ");
         if (approve === null) break;
         const approveText = approve.trim();
@@ -702,6 +702,7 @@ async function main() {
           todoState = null;
           break;
         }
+        process.stdout.write("\n");
 
         const result = await runCommand({
           cmd: combined,
@@ -724,7 +725,7 @@ async function main() {
       for (const entry of writeTools) {
         const { path: filePath, content: fileContent } = entry.tool;
         const preview = fileContent.length > 200 ? fileContent.slice(0, 200) + "..." : fileContent;
-        process.stdout.write(`\n${TOOL_CMD_RED}write: ${filePath}${PROMPT_RESET}\n`);
+        process.stdout.write(`${TOOL_CMD_RED}write: ${filePath}${PROMPT_RESET}\n`);
         process.stdout.write(`${preview}\n`);
         const approve = await question("Write? [Y/n] ");
         if (approve === null) break;
@@ -734,6 +735,7 @@ async function main() {
           todoState = null;
           break;
         }
+        process.stdout.write("\n");
 
         try {
           const fullPath = path.resolve(args.root || process.cwd(), filePath);
