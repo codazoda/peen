@@ -168,6 +168,10 @@ function findUnsupportedToolLine(text) {
   return null;
 }
 
+function hasCodeBlocks(text) {
+  return /```\w*\n[\s\S]*?```/.test(text);
+}
+
 function describeToolCall(entry) {
   const { lines, lineIndex } = entry;
   for (let i = lineIndex - 1; i >= 0; i -= 1) {
@@ -438,6 +442,10 @@ async function main() {
     new URL("./prompt/tool_repair.txt", import.meta.url),
     "utf-8"
   ).trim();
+  const CODE_BLOCK_REPAIR_PROMPT = readFileSync(
+    new URL("./prompt/code_block_repair.txt", import.meta.url),
+    "utf-8"
+  ).trim();
 
   let tags;
   try {
@@ -652,6 +660,13 @@ async function main() {
           toolRepairAttempts += 1;
           process.stdout.write(`(tool repair prompt)\n${TOOL_REPAIR_PROMPT}\n\n`);
           messages.push({ role: "user", content: TOOL_REPAIR_PROMPT });
+          continue;
+        }
+        // Detect code blocks and ask model if it should write to file
+        if (hasCodeBlocks(assistantText) && toolRepairAttempts < 3) {
+          toolRepairAttempts += 1;
+          process.stdout.write(`(code block detected)\n${CODE_BLOCK_REPAIR_PROMPT}\n\n`);
+          messages.push({ role: "user", content: CODE_BLOCK_REPAIR_PROMPT });
           continue;
         }
         if (todoState && todoState.index < todoState.items.length) {
