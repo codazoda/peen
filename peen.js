@@ -130,8 +130,8 @@ function extractToolCalls(text) {
       const fixedTool = parseToolJsonLine(combined);
       if (fixedTool) {
         tools.push({ tool: fixedTool, lineIndex: i, lines });
-        i = j - 1; // Skip the lines we consumed
       }
+      i = j - 1; // Always skip consumed lines to avoid re-processing
     }
   }
   return tools;
@@ -442,7 +442,7 @@ async function main() {
 
   let model = args.model || process.env.MODEL || null;
   if (!model) {
-    const preferred = "llama3.1:latest";
+    const preferred = "qwen2.5-coder:14b";
     const hasPreferred = tags.some((t) => t?.name === preferred);
     model = hasPreferred ? preferred : tags[0]?.name || "llama3";
     process.stdout.write(`Server: ${host}\nUsing model: ${model}\n\n`);
