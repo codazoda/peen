@@ -4,13 +4,13 @@ A deliberately minimalist “Claude Code / OpenCode”-style CLI written in Node
 
 ## Why this exists
 
-Most code agents grow lots of UI and infrastructure quickly. This repo aims for the smallest useful core:
+Popular AI tools like Claude Code, Open Code, and Codex are amazing, but the're built to work with "foundation" models that speak a very specific language (XML). I've been trying to get local, open-source models to work with these tools, but they almost always fail.
 
-- **Streaming** model output so it never feels stuck
-- A single capability: **run commands** locally and feed results back
-- A few practical slash commands: `/exit`, `/reset`, `/model`
+The reason is simple: local models were trained mostly on JSON, a different way of formatting data. When you try to force a local model to use the "XML language" required by big CLI tools, it gets confused. This means the most powerful feature—the ability for the AI to actually run commands for you—breaks the moment you try to run it locally.
 
-## How it will work
+This project is a minimal, experimental tool designed to solve that. Instead of forcing local models to speak a language they don't know, this CLI is built to understand the JSON they already use. It’s a lean "bridge" that watches the model's output, helps it fix its own mistakes, and finally makes it possible to have a capable coding assistant running right on your own machine.
+
+## How it works
 
 - Configure Ollama via `OLLAMA_HOST` (defaults to `http://127.0.0.1:11434`).
 - On startup, the CLI checks that Ollama is reachable (`/api/tags`) and exits if not.
@@ -31,7 +31,7 @@ Quick install (pulls raw files from `main`, no build step):
 curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bash
 ```
 
-On each start, `peen` checks GitHub for the latest commit and self-updates if needed.
+On each start, `peen` checks GitHub for the latest version and self-updates if needed.
 
 ## Versioning
 
@@ -50,4 +50,4 @@ The hook updates:
 
 ## Repo docs
 
-- See **PLAN.md** for the concrete build plan and design constraints.
+- See **PLAN.md** for the original build plan and design constraints.

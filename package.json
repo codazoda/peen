@@ -1,11 +1,12 @@
 {
   "name": "peen",
-  "version": "0.1.42",
+  "version": "0.1.43",
   "private": true,
   "type": "module",
   "description": "Minimal Node CLI agent for Ollama with streaming + run(cmd) tool.",
   "license": "UNLICENSED",
   "scripts": {
-    "start": "node peen.js"
+    "start": "node peen.js",
+    "build": "mkdir -p ~/.local/share/peen/prompt ~/.local/bin && cp peen.js ollama.js tools.js LICENSE VERSION ~/.local/share/peen/ && cp prompt/system.txt prompt/tool_repair.txt ~/.local/share/peen/prompt/ && chmod +x ~/.local/share/peen/peen.js && printf '#!/usr/bin/env bash\\nset -euo pipefail\\nexec node ~/.local/share/peen/peen.js \"$@\"\\n' > ~/.local/bin/peen && chmod +x ~/.local/bin/peen"
   }
 }
