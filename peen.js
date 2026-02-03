@@ -401,7 +401,6 @@ function printBanner(version, host, model) {
   if (model) {
     process.stdout.write(`model: ${model}\n`);
   }
-  process.stdout.write("\n");
 }
 
 async function main() {
@@ -428,6 +427,9 @@ async function main() {
   const host = process.env.PEEN_HOST || "http://127.0.0.1:11434";
   const configuredModel = args.model || process.env.PEEN_MODEL || null;
   printBanner(version, host, configuredModel);
+  if (configuredModel) {
+    process.stdout.write("\n");
+  }
 
   const { checkOllama, streamChat } = await import("./ollama.js");
   const { runCommand, formatToolResult } = await import("./tools.js");
