@@ -383,7 +383,7 @@ function writeBlackBlankLine() {
   process.stdout.write(`\r${PROMPT_RESET}\x1b[2K\n`);
 }
 
-function printBanner(version) {
+function printBanner(version, host, model) {
   const lines = [
     "                                  ",
     "... ...    ....    ....  .. ...   ",
@@ -395,8 +395,13 @@ function printBanner(version) {
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
   if (version) {
-    process.stdout.write(`version: ${version}\n\n`);
+    process.stdout.write(`version: ${version}\n`);
   }
+  process.stdout.write(`server: ${host}\n`);
+  if (model) {
+    process.stdout.write(`model: ${model}\n`);
+  }
+  process.stdout.write("\n");
 }
 
 async function main() {
@@ -420,7 +425,9 @@ async function main() {
 
   const { installDir } = getInstallPaths();
   const version = await readLocalVersion(installDir);
-  printBanner(version);
+  const host = process.env.PEEN_HOST || "http://127.0.0.1:11434";
+  const configuredModel = args.model || process.env.PEEN_MODEL || null;
+  printBanner(version, host, configuredModel);
 
   const { checkOllama, streamChat } = await import("./ollama.js");
   const { runCommand, formatToolResult } = await import("./tools.js");
@@ -430,8 +437,6 @@ async function main() {
     "utf-8"
   ).trim();
 
-  const host = process.env.PEEN_HOST || "http://127.0.0.1:11434";
-
   let tags;
   try {
     tags = await checkOllama(host);
@@ -440,12 +445,12 @@ async function main() {
     process.exit(1);
   }
 
-  let model = args.model || process.env.PEEN_MODEL || null;
+  let model = configuredModel;
   if (!model) {
     const preferred = "qwen2.5-coder:14b";
     const hasPreferred = tags.some((t) => t?.name === preferred);
     model = hasPreferred ? preferred : tags[0]?.name || "llama3";
-    process.stdout.write(`Server: ${host}\nUsing model: ${model}\n\n`);
+    process.stdout.write(`model: ${model}\n\n`);
   }
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
