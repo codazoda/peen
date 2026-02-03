@@ -33,6 +33,11 @@ curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bas
 
 On each start, `peen` checks GitHub for the latest version and self-updates if needed.
 
+## Recommended models
+
+- qwen2.5-coder:14b
+- qwen3-coder:30b (Requries GPU)
+
 ## Versioning
 
 This repo uses `git rev-list --count HEAD` to produce versions like `0.1.123`.
