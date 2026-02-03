@@ -61,7 +61,7 @@ function stripTodoBlocks(text) {
 }
 
 function parseArgs(argv) {
-  const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false };
+  const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false, force: false };
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--model" && argv[i + 1]) {
@@ -71,6 +71,10 @@ function parseArgs(argv) {
     }
     if (arg === "--install-only") {
       args.installOnly = true;
+      continue;
+    }
+    if (arg === "--force") {
+      args.force = true;
       continue;
     }
     if (arg === "--dangerous") {
@@ -324,7 +328,7 @@ exec node "${installDir}/peen.js" "$@"
   }
 }
 
-async function ensureLatest({ installOnly }) {
+async function ensureLatest({ installOnly, force }) {
   const { installDir, binDir } = getInstallPaths();
   const localSha = await readLocalSha(installDir);
 
@@ -340,7 +344,7 @@ async function ensureLatest({ installOnly }) {
     return { status: installOnly ? UPDATE_STATUS.INSTALLED : UPDATE_STATUS.SKIPPED, installDir };
   }
 
-  if (!localSha || localSha !== remoteSha) {
+  if (!localSha || localSha !== remoteSha || force) {
     process.stdout.write("(update) installing latest peen...\n");
     await installLatest(installDir, binDir, remoteSha);
     return { status: UPDATE_STATUS.INSTALLED, installDir };
@@ -411,12 +415,12 @@ async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node peen.js [--model <name>] [--root <path>] [--dangerous] [--debug] [--install-only]\n"
+      "Usage: node peen.js [--model <name>] [--root <path>] [--dangerous] [--debug] [--install-only] [--force]\n"
     );
     process.exit(0);
   }
 
-  const update = await ensureLatest({ installOnly: args.installOnly });
+  const update = await ensureLatest({ installOnly: args.installOnly, force: args.force });
   if (update.status === UPDATE_STATUS.INSTALLED) {
     if (args.installOnly) process.exit(0);
     if (!process.env.PEEN_RELAUNCHED) {
