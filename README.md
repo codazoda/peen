@@ -1,6 +1,6 @@
 # peen
 
-A deliberately minimalist “Claude Code / OpenCode”-style CLI written in Node.js that talks to **Ollama** over HTTP and can **run shell commands** so the model can inspect and modify your project using tools like `cat`, `ls`, `grep`, and `echo > file`.
+A deliberately minimalist “Claude Code / OpenCode”-style CLI written in Node.js that talks to **Ollama** over HTTP and can **run shell commands** so the model can inspect and modify your project using tools like `cat`, `ls`, `grep`, and `echo > file`. Peen was developed by [Joel Dare](https://joeldare.com).
 
 ![Peen Screenshot](peen-screenshot.png)
 
@@ -70,6 +70,7 @@ peen --model qwen2.5-coder:14b
 
 ## Recommended models
 
+- qwen2.5-coder:7b
 - qwen2.5-coder:14b
 - qwen3-coder:30b (Requires GPU)
 
