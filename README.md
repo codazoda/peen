@@ -2,6 +2,8 @@
 
 A deliberately minimalist “Claude Code / OpenCode”-style CLI written in Node.js that talks to **Ollama** over HTTP and can **run shell commands** so the model can inspect and modify your project using tools like `cat`, `ls`, `grep`, and `echo > file`.
 
+![Peen Screenshot](peen-screenshot.png)
+
 ## Why this exists
 
 Popular AI tools like Claude Code, Open Code, and Codex are amazing, but the're built to work with "foundation" models that speak a very specific language (XML). I've been trying to get local, open-source models to work with these tools, but they almost always fail.
