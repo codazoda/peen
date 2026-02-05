@@ -4,6 +4,16 @@ A deliberately minimalist “Claude Code / OpenCode”-style CLI written in Node
 
 ![Peen Screenshot](peen-screenshot.png)
 
+## Install
+
+Quick install (pulls raw files from `main`, no build step):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bash
+```
+
+On each start, `peen` checks GitHub for the latest version and self-updates if needed.
+
 ## Why this exists
 
 Popular AI tools like Claude Code, Open Code, and Codex are amazing, but the're built to work with "foundation" models that speak a very specific language (XML). I've been trying to get local, open-source models to work with these tools, but they almost always fail.
@@ -24,16 +34,6 @@ This project is a minimal, experimental tool designed to solve that. Instead of 
 ```
 
 The CLI executes the command (with basic time/output limits) and sends the result back to the model.
-
-## Install
-
-Quick install (pulls raw files from `main`, no build step):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/codazoda/peen/main/install.sh | bash
-```
-
-On each start, `peen` checks GitHub for the latest version and self-updates if needed.
 
 ## Configuration
 
