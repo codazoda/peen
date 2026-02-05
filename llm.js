@@ -47,8 +47,7 @@ function hasToolCall(text) {
 
 export async function streamChat({ host, model, messages, onToken, debug }) {
   const url = new URL("/v1/chat/completions", host);
-  const converted = convertToolMessages(messages);
-  const bodyData = JSON.stringify({ model, messages: converted, stream: true });
+  const bodyData = JSON.stringify({ model, messages, stream: true });
 
   return new Promise((resolve, reject) => {
     const curl = spawn("curl", [
