@@ -1,6 +1,6 @@
 # peen
 
-A deliberately minimalist “Claude Code / OpenCode”-style CLI written in Node.js that talks to **Ollama** over HTTP and can **run shell commands** so the model can inspect and modify your project using tools like `cat`, `ls`, `grep`, and `echo > file`. Peen was created by [Joel Dare](https://joeldare.com).
+An experimental and deliberately minimalist “Claude Code / OpenCode”-style CLI written in Node.js that talks to **Ollama** over HTTP and can **run shell commands** so the model can inspect and modify your project using tools like `cat`, `ls`, `grep`, and `echo > file`. Peen was created by [Joel Dare](https://joeldare.com).
 
 ![Peen Screenshot](peen-screenshot.png)
 
