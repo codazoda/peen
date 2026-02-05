@@ -302,7 +302,7 @@ async function installLatest(installDir, binDir, sha) {
   const packageJson = JSON.stringify({ type: "module" }, null, 2);
   await fs.writeFile(path.join(installDir, "package.json"), packageJson, "utf-8");
 
-  const files = ["peen.js", "ollama.js", "tools.js", "prompt/system.txt", "prompt/tool_repair.txt", "prompt/code_block_repair.txt", "VERSION"];
+  const files = ["peen.js", "llm.js", "tools.js", "prompt/system.txt", "prompt/tool_repair.txt", "prompt/code_block_repair.txt", "VERSION"];
   for (const file of files) {
     try {
       const content = await fetchText(`${REPO_RAW}/${file}`);
@@ -439,7 +439,7 @@ async function main() {
     process.stdout.write("\n");
   }
 
-  const { checkOllama, streamChat } = await import("./ollama.js");
+  const { listModels, streamChat } = await import("./llm.js");
   const { runCommand, formatToolResult } = await import("./tools.js");
   const SYSTEM_PROMPT = readFileSync(new URL("./prompt/system.txt", import.meta.url), "utf-8").trim();
   const TOOL_REPAIR_PROMPT = readFileSync(
@@ -453,9 +453,9 @@ async function main() {
 
   let tags;
   try {
-    tags = await checkOllama(host);
+    tags = await listModels(host);
   } catch (err) {
-    process.stderr.write("Ollama not reachable. Is it running?\n");
+    process.stderr.write("Server not reachable. Is it running?\n");
     process.exit(1);
   }
 
