@@ -880,8 +880,16 @@ async function main() {
         const approveText = approve.trim();
         if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
           messages.push({ role: "tool", name: "run", content: "Command not run (user denied)." });
-          todoState = null;
-          break;
+          // Prompt for feedback and continue with current step
+          const feedback = await readMultilineInput(question);
+          if (feedback === null) break;
+          if (feedback) {
+            writeBlackBlankLine();
+            messages.push({ role: "user", content: feedback });
+          } else {
+            messages.push({ role: "user", content: "Try a different approach for this step." });
+          }
+          continue;
         }
         process.stdout.write("\n");
 
@@ -913,8 +921,16 @@ async function main() {
         const approveText = approve.trim();
         if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
           messages.push({ role: "tool", name: "write", content: "File not written (user denied)." });
-          todoState = null;
-          break;
+          // Prompt for feedback and continue with current step
+          const feedback = await readMultilineInput(question);
+          if (feedback === null) break;
+          if (feedback) {
+            writeBlackBlankLine();
+            messages.push({ role: "user", content: feedback });
+          } else {
+            messages.push({ role: "user", content: "Try a different approach for this step." });
+          }
+          break; // Break from writeTools loop, but continue main loop
         }
         process.stdout.write("\n");
 
