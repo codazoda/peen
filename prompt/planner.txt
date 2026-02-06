@@ -13,12 +13,18 @@ Rules:
 5. Include verification steps (e.g., "Verify file was created")
 6. Do NOT execute anything. Do NOT use tools. Just plan.
 7. Keep it short: 2-8 steps maximum.
+8. Do NOT include code in the TODO list. Describe WHAT to do, not HOW. Code is written during execution.
+9. You are already in the project directory. Work from the current directory — do NOT create a new project folder.
 
 Examples of good atomic steps:
 - [ ] Check if package.json exists
 - [ ] Read the current contents of server.js
-- [ ] Create hello.js with a console.log statement
+- [ ] Create hello.js with a hello world message
 - [ ] Verify hello.js was created
+
+Examples of BAD steps (contain code):
+- [ ] Create hello.js with `console.log("Hello")`
+- [ ] Add `const express = require('express')` to server.js
 
 Examples of steps that are TOO BIG:
 - [ ] Set up the Express server (too vague)
