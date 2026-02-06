@@ -21,6 +21,10 @@ const VERSION_RE = /^0\.1\.\d+$/;
 const TODO_HEADER_RE = /^TODO:\s*$/im;
 const TODO_ITEM_RE = /^- \[ \] (.+)$/gm;
 const QUESTION_INDICATORS = ["?", "which", "what type", "do you want", "would you like", "could you clarify"];
+const TOOL_REMINDER = `TOOL FORMAT REMINDER:
+- Run commands: {"tool":"run","cmd":"your command"}
+- Write files: {"tool":"write","path":"file.txt","content":"content with \\n for newlines"}
+- Output ONLY the JSON line, no markdown, no code blocks, no explanation after.`;
 
 function parseTodoList(text) {
   if (!TODO_HEADER_RE.test(text)) return null;
@@ -710,17 +714,12 @@ async function main() {
 
     messages.push({ role: "user", content: input });
 
-    // If we have a todoState from the planner, inject it into messages
+    // If we have a todoState from the planner, inject only the current step
     if (todoState && todoState.items.length > 0) {
-      process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
-      writeBlackBlankLine();
+      todoState.goal = input; // Store the original goal
       messages.push({
         role: "user",
-        content: `Here is the plan:\n${formatTodoList(todoState.items, -1)}\n\nProceed with step 1: ${todoState.items[0]}`,
-      });
-      messages.push({
-        role: "user",
-        content: "Do not output the TODO list again. I will track it.",
+        content: `Goal: ${input}\n\n${TOOL_REMINDER}\n\nStep ${todoState.index + 1} of ${todoState.items.length}: ${todoState.items[0]}\n\nComplete ONLY this step, then stop.`,
       });
     }
 
@@ -747,17 +746,13 @@ async function main() {
       const todoItemsInText = parseTodoList(assistantText);
       if (!todoState && todoItemsInText) {
         // Model produced a TODO list without planner (fallback case)
-        todoState = { pendingList: false, items: todoItemsInText, index: 0 };
+        todoState = { pendingList: false, items: todoItemsInText, index: 0, goal: input };
         messages.push({ role: "assistant", content: assistantText });
         process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
         writeBlackBlankLine();
         messages.push({
           role: "user",
-          content: `Proceed with step 1: ${todoState.items[0]}`,
-        });
-        messages.push({
-          role: "user",
-          content: "Do not output the TODO list again. I will track it.",
+          content: `Goal: ${input}\n\n${TOOL_REMINDER}\n\nStep 1 of ${todoState.items.length}: ${todoState.items[0]}\n\nComplete ONLY this step, then stop.`,
         });
         continue;
       }
@@ -788,16 +783,13 @@ async function main() {
         todoState.items = items;
         todoState.pendingList = false;
         todoState.index = 0;
+        todoState.goal = todoState.goal || input;
         messages.push({ role: "assistant", content: assistantText });
         process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
         writeBlackBlankLine();
         messages.push({
           role: "user",
-          content: `Proceed with step 1: ${todoState.items[0]}`,
-        });
-        messages.push({
-          role: "user",
-          content: "Do not output the TODO list again. I will track it.",
+          content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep 1 of ${todoState.items.length}: ${todoState.items[0]}\n\nComplete ONLY this step, then stop.`,
         });
         continue;
       }
@@ -845,7 +837,7 @@ async function main() {
           }
           messages.push({
             role: "user",
-            content: `Proceed with step ${todoState.index + 1}: ${todoState.items[todoState.index]}`,
+            content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep ${todoState.index + 1} of ${todoState.items.length}: ${todoState.items[todoState.index]}\n\nComplete ONLY this step, then stop.`,
           });
           continue;
         }
