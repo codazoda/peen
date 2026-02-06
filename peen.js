@@ -20,6 +20,7 @@ const UPDATE_STATUS = {
 const VERSION_RE = /^0\.1\.\d+$/;
 const TODO_HEADER_RE = /^TODO:\s*$/im;
 const TODO_ITEM_RE = /^- \[ \] (.+)$/gm;
+const QUESTION_INDICATORS = ["?", "which", "what type", "do you want", "would you like", "could you clarify"];
 
 function parseTodoList(text) {
   if (!TODO_HEADER_RE.test(text)) return null;
@@ -29,6 +30,16 @@ function parseTodoList(text) {
     items.push(match[1].trim());
   }
   return items.length > 0 ? items : null;
+}
+
+function looksLikeClarifyingQuestion(text) {
+  const lower = text.toLowerCase();
+  if (!text.includes("?")) return false;
+  if (TODO_HEADER_RE.test(text)) return false;
+  for (const indicator of QUESTION_INDICATORS) {
+    if (lower.includes(indicator)) return true;
+  }
+  return false;
 }
 
 function formatTodoList(items, doneIndex) {
@@ -442,6 +453,7 @@ async function main() {
   const { listModels, streamChat } = await import("./llm.js");
   const { runCommand, formatToolResult } = await import("./tools.js");
   const SYSTEM_PROMPT = readFileSync(new URL("./prompt/system.txt", import.meta.url), "utf-8").trim();
+  const PLANNER_PROMPT = readFileSync(new URL("./prompt/planner.txt", import.meta.url), "utf-8").trim();
   const TOOL_REPAIR_PROMPT = readFileSync(
     new URL("./prompt/tool_repair.txt", import.meta.url),
     "utf-8"
@@ -538,18 +550,151 @@ async function main() {
       continue;
     }
 
+    // Planning pass: run input through planner to get TODO list
+    let plannerInput = input;
+    let planApproved = false;
+    while (!planApproved) {
+      const plannerMessages = [
+        { role: "system", content: PLANNER_PROMPT },
+        { role: "user", content: plannerInput },
+      ];
+
+      let planResponse = "";
+      try {
+        planResponse = await streamChat({
+          host,
+          model: currentModel,
+          messages: plannerMessages,
+          onToken: (token) => process.stdout.write(token),
+          debug: args.debug,
+        });
+      } catch (err) {
+        process.stderr.write(`\nPlanner error: ${err.message}\n`);
+        break;
+      }
+
+      if (!planResponse.endsWith("\n")) process.stdout.write("\n");
+      writeBlackBlankLine();
+
+      // Check if planner asked clarifying questions
+      if (looksLikeClarifyingQuestion(planResponse)) {
+        const clarification = await readMultilineInput(question);
+        if (clarification === null) break;
+        if (!clarification) continue;
+        writeBlackBlankLine();
+        plannerInput = `${input}\n\nUser clarification: ${clarification}`;
+        continue;
+      }
+
+      // Check if planner produced a TODO list
+      const planItems = parseTodoList(planResponse);
+      if (!planItems) {
+        // Planner didn't produce a TODO list, retry with repair prompt
+        process.stdout.write("(planner did not produce a TODO list, retrying...)\n");
+        plannerMessages.push({ role: "assistant", content: planResponse });
+        plannerMessages.push({
+          role: "user",
+          content: "Please respond with ONLY a TODO list in this exact format:\nTODO:\n- [ ] First step\n- [ ] Second step",
+        });
+        try {
+          planResponse = await streamChat({
+            host,
+            model: currentModel,
+            messages: plannerMessages,
+            onToken: (token) => process.stdout.write(token),
+            debug: args.debug,
+          });
+        } catch (err) {
+          process.stderr.write(`\nPlanner retry error: ${err.message}\n`);
+          break;
+        }
+        if (!planResponse.endsWith("\n")) process.stdout.write("\n");
+        writeBlackBlankLine();
+
+        const retryItems = parseTodoList(planResponse);
+        if (!retryItems) {
+          // Still no TODO list, fall back to current behavior
+          process.stdout.write("(planner could not produce a TODO list, proceeding without plan)\n");
+          planApproved = true;
+          todoState = null;
+          break;
+        }
+        // Got items on retry, show approval prompt
+        process.stdout.write(`${formatTodoList(retryItems, -1)}\n`);
+        writeBlackBlankLine();
+        const approve = await question("Execute this plan? [Y/n/e] ");
+        if (approve === null) break;
+        const approveText = approve.trim().toLowerCase();
+        if (approveText === "n" || approveText === "no") {
+          process.stdout.write("(plan cancelled)\n");
+          break;
+        }
+        if (approveText === "e" || approveText === "edit") {
+          const edited = await readMultilineInput(question);
+          if (edited === null) break;
+          if (!edited) continue;
+          writeBlackBlankLine();
+          plannerInput = edited;
+          continue;
+        }
+        // Approved
+        todoState = { pendingList: false, items: retryItems, index: 0 };
+        planApproved = true;
+        break;
+      }
+
+      // Got a valid TODO list, prompt for approval
+      const approve = await question("Execute this plan? [Y/n/e] ");
+      if (approve === null) break;
+      const approveText = approve.trim().toLowerCase();
+      if (approveText === "n" || approveText === "no") {
+        process.stdout.write("(plan cancelled)\n");
+        break;
+      }
+      if (approveText === "e" || approveText === "edit") {
+        const edited = await readMultilineInput(question);
+        if (edited === null) break;
+        if (!edited) continue;
+        writeBlackBlankLine();
+        plannerInput = edited;
+        continue;
+      }
+      // Approved
+      todoState = { pendingList: false, items: planItems, index: 0 };
+      planApproved = true;
+    }
+
+    // If plan was not approved (cancelled or error), skip to next input
+    if (!planApproved) {
+      continue;
+    }
+
     messages.push({ role: "user", content: input });
+
+    // If we have a todoState from the planner, inject it into messages
+    if (todoState && todoState.items.length > 0) {
+      process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
+      writeBlackBlankLine();
+      messages.push({
+        role: "user",
+        content: `Here is the plan:\n${formatTodoList(todoState.items, -1)}\n\nProceed with step 1: ${todoState.items[0]}`,
+      });
+      messages.push({
+        role: "user",
+        content: "Do not output the TODO list again. I will track it.",
+      });
+    }
+
     let toolRepairAttempts = 0;
 
     while (true) {
       let assistantText = "";
-      const shouldStream = !todoState;
       try {
         assistantText = await streamChat({
           host,
           model: currentModel,
           messages,
-          onToken: shouldStream ? (token) => process.stdout.write(token) : null,
+          onToken: (token) => process.stdout.write(token),
           debug: args.debug,
         });
       } catch (err) {
@@ -557,18 +702,13 @@ async function main() {
         break;
       }
 
-      if (shouldStream) {
-        if (!assistantText.endsWith("\n")) process.stdout.write("\n");
-        writeBlackBlankLine();
-      }
+      if (!assistantText.endsWith("\n")) process.stdout.write("\n");
+      writeBlackBlankLine();
 
       const todoItemsInText = parseTodoList(assistantText);
       if (!todoState && todoItemsInText) {
+        // Model produced a TODO list without planner (fallback case)
         todoState = { pendingList: false, items: todoItemsInText, index: 0 };
-        if (!shouldStream) {
-          process.stdout.write(`${assistantText}\n`);
-          writeBlackBlankLine();
-        }
         messages.push({ role: "assistant", content: assistantText });
         process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
         writeBlackBlankLine();
@@ -583,11 +723,7 @@ async function main() {
         continue;
       }
       if (todoState && !todoState.pendingList && todoItemsInText) {
-        const filtered = stripTodoBlocks(assistantText);
-        if (!shouldStream && filtered) {
-          process.stdout.write(`${filtered}\n`);
-          writeBlackBlankLine();
-        }
+        // Model re-outputted TODO list during execution, suppress it
         messages.push({ role: "assistant", content: assistantText });
         messages.push({
           role: "user",
@@ -599,10 +735,6 @@ async function main() {
       if (todoState?.pendingList) {
         const items = todoItemsInText;
         if (!items) {
-          if (!shouldStream) {
-            process.stdout.write(`${assistantText}\n`);
-            writeBlackBlankLine();
-          }
           messages.push({ role: "assistant", content: assistantText });
           messages.push({
             role: "user",
@@ -617,10 +749,6 @@ async function main() {
         todoState.items = items;
         todoState.pendingList = false;
         todoState.index = 0;
-        if (!shouldStream) {
-          process.stdout.write(`${assistantText}\n`);
-          writeBlackBlankLine();
-        }
         messages.push({ role: "assistant", content: assistantText });
         process.stdout.write(`${formatTodoList(todoState.items, -1)}\n`);
         writeBlackBlankLine();
@@ -633,11 +761,6 @@ async function main() {
           content: "Do not output the TODO list again. I will track it.",
         });
         continue;
-      }
-
-      if (!shouldStream) {
-        process.stdout.write(`${assistantText}\n`);
-        writeBlackBlankLine();
       }
 
       const tools = extractToolCalls(assistantText);
