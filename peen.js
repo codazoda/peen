@@ -306,14 +306,14 @@ async function writeExecutable(filePath, content) {
   await fs.chmod(filePath, 0o755);
 }
 
-async function installLatest(installDir, binDir, sha) {
+async function installLatestLocal(installDir, binDir, sha) {
   await fs.mkdir(path.join(installDir, "prompt"), { recursive: true });
   await fs.mkdir(binDir, { recursive: true });
 
   const packageJson = JSON.stringify({ type: "module" }, null, 2);
   await fs.writeFile(path.join(installDir, "package.json"), packageJson, "utf-8");
 
-  const files = ["peen.js", "llm.js", "tools.js", "prompt/system.txt", "prompt/tool_repair.txt", "prompt/code_block_repair.txt", "VERSION"];
+  const files = ["peen.js", "llm.js", "tools.js", "prompt/system.txt", "prompt/tool_repair.txt", "prompt/code_block_repair.txt", "prompt/planner.txt", "VERSION"];
   for (const file of files) {
     try {
       const content = await fetchText(`${REPO_RAW}/${file}`);
@@ -339,8 +339,47 @@ exec node "${installDir}/peen.js" "$@"
   }
 }
 
+async function installLatest(installDir, binDir, sha) {
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "peen-"));
+  const tmpPeen = path.join(tmpDir, "peen.js");
+  const tmpPkg = path.join(tmpDir, "package.json");
+
+  try {
+    // Download remote peen.js
+    const peenContent = await fetchText(`${REPO_RAW}/peen.js`);
+    await fs.writeFile(tmpPeen, peenContent, "utf-8");
+    await fs.writeFile(tmpPkg, '{"type":"module"}', "utf-8");
+
+    // Run remote peen.js --install-only
+    await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [tmpPeen, "--install-only"], {
+        cwd: tmpDir,
+        stdio: "inherit",
+        env: { ...process.env, PEEN_SKIP_UPDATE_CHECK: "1" },
+      });
+      child.on("exit", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Install failed with code ${code}`));
+      });
+      child.on("error", reject);
+    });
+  } finally {
+    // Cleanup temp dir
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  }
+}
+
 async function ensureLatest({ installOnly, force }) {
   const { installDir, binDir } = getInstallPaths();
+
+  // Skip update check if running as remote installer
+  if (process.env.PEEN_SKIP_UPDATE_CHECK) {
+    // We ARE the remote version, run installLatestLocal directly
+    const remoteSha = await fetchRemoteSha().catch(() => null);
+    await installLatestLocal(installDir, binDir, remoteSha);
+    return { status: UPDATE_STATUS.INSTALLED, installDir };
+  }
+
   const localSha = await readLocalSha(installDir);
 
   let remoteSha = null;
