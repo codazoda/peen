@@ -27,10 +27,12 @@ const TOOL_REMINDER = `TOOL FORMAT REMINDER:
 - Output ONLY the JSON line, no markdown, no code blocks, no explanation after.`;
 
 function parseTodoList(text) {
-  if (!TODO_HEADER_RE.test(text)) return null;
+  // Strip code block markers if present
+  let cleaned = text.replace(/^```\w*\n?/gm, "").replace(/```$/gm, "").trim();
+  if (!TODO_HEADER_RE.test(cleaned)) return null;
   const items = [];
   let match;
-  while ((match = TODO_ITEM_RE.exec(text)) !== null) {
+  while ((match = TODO_ITEM_RE.exec(cleaned)) !== null) {
     items.push(match[1].trim());
   }
   return items.length > 0 ? items : null;
@@ -76,7 +78,8 @@ function stripTodoBlocks(text) {
 }
 
 function parseArgs(argv) {
-  const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false, force: false };
+  const args = { model: null, dangerous: false, root: null, debug: false, installOnly: false, force: false, yes: false, prompt: null };
+  const positional = [];
   for (let i = 2; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--model" && argv[i + 1]) {
@@ -105,10 +108,22 @@ function parseArgs(argv) {
       args.debug = true;
       continue;
     }
+    if (arg === "--yes" || arg === "-y") {
+      args.yes = true;
+      continue;
+    }
     if (arg === "--help" || arg === "-h") {
       args.help = true;
       continue;
     }
+    // Collect non-flag arguments as positional
+    if (!arg.startsWith("-")) {
+      positional.push(arg);
+    }
+  }
+  // Join positional arguments as the prompt
+  if (positional.length > 0) {
+    args.prompt = positional.join(" ");
   }
   return args;
 }
@@ -127,7 +142,9 @@ function parseToolJsonLine(line) {
 }
 
 function extractToolCalls(text) {
-  const lines = text.split("\n");
+  // Strip markdown code fences if present
+  const cleaned = text.replace(/^```(?:json)?\s*\n?/gm, "").replace(/\n?```$/gm, "").trim();
+  const lines = cleaned.split("\n");
   const tools = [];
   for (let i = 0; i < lines.length; i += 1) {
     const tool = parseToolJsonLine(lines[i]);
@@ -469,7 +486,9 @@ async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
     process.stdout.write(
-      "Usage: node peen.js [--model <name>] [--root <path>] [--dangerous] [--debug] [--install-only] [--force]\n"
+      "Usage: node peen.js [--model <name>] [--root <path>] [--dangerous] [--debug] [--install-only] [--force] [--yes|-y] [prompt]\n" +
+      "  --yes, -y    Auto-approve all prompts (for automation)\n" +
+      "  prompt       Initial prompt to execute (exits after completion)\n"
     );
     process.exit(0);
   }
@@ -516,7 +535,7 @@ async function main() {
 
   let model = configuredModel;
   if (!model) {
-    const preferred = "qwen2.5-coder:14b";
+    const preferred = "qwen2.5-coder:7b";
     const hasPreferred = tags.some((t) => t?.name === preferred);
     model = hasPreferred ? preferred : tags[0]?.name || "llama3";
     process.stdout.write(`model: ${model}\n\n`);
@@ -554,16 +573,26 @@ async function main() {
   const inGitRepo = await isGitRepo(repoRoot);
   if (!inGitRepo) {
     process.stdout.write("(warn) current directory is not a git repository.\n");
-    const cont = await question("Continue anyway? [y/N] ");
-    if (cont === null || !/^y(es)?$/i.test(cont.trim())) {
-      rl.close();
-      process.exit(0);
+    if (!args.yes) {
+      const cont = await question("Continue anyway? [y/N] ");
+      if (cont === null || !/^y(es)?$/i.test(cont.trim())) {
+        rl.close();
+        process.exit(0);
+      }
+      writeBlackBlankLine();
     }
-    writeBlackBlankLine();
   }
 
+  let firstInput = args.prompt;
   while (true) {
-    const input = await readMultilineInput(question);
+    let input;
+    if (firstInput) {
+      input = firstInput;
+      firstInput = null;
+      process.stdout.write(`${PROMPT_PIPE_FG}|${PROMPT_TEXT_FG} ${input}${PROMPT_RESET}\n`);
+    } else {
+      input = await readMultilineInput(question);
+    }
     if (input === null) break;
     if (!input) continue;
     writeBlackBlankLine();
@@ -621,6 +650,11 @@ async function main() {
 
       // Check if planner asked clarifying questions
       if (looksLikeClarifyingQuestion(planResponse)) {
+        if (args.yes) {
+          // In --yes mode, tell the planner to proceed with reasonable defaults
+          plannerInput = `${input}\n\nUser clarification: Please proceed with reasonable defaults. Make your own choices for any details not specified.`;
+          continue;
+        }
         const clarification = await readMultilineInput(question);
         if (clarification === null) break;
         if (!clarification) continue;
@@ -665,6 +699,12 @@ async function main() {
         // Got items on retry, show approval prompt
         process.stdout.write(`${formatTodoList(retryItems, -1)}\n`);
         writeBlackBlankLine();
+        if (args.yes) {
+          process.stdout.write("(auto-approved)\n");
+          todoState = { pendingList: false, items: retryItems, index: 0 };
+          planApproved = true;
+          break;
+        }
         const approve = await question("Execute this plan? [Y/n/e] ");
         if (approve === null) break;
         const approveText = approve.trim().toLowerCase();
@@ -687,6 +727,12 @@ async function main() {
       }
 
       // Got a valid TODO list, prompt for approval
+      if (args.yes) {
+        process.stdout.write("(auto-approved)\n");
+        todoState = { pendingList: false, items: planItems, index: 0 };
+        planApproved = true;
+        break;
+      }
       const approve = await question("Execute this plan? [Y/n/e] ");
       if (approve === null) break;
       const approveText = approve.trim().toLowerCase();
@@ -752,7 +798,7 @@ async function main() {
         writeBlackBlankLine();
         messages.push({
           role: "user",
-          content: `Goal: ${input}\n\n${TOOL_REMINDER}\n\nStep 1 of ${todoState.items.length}: ${todoState.items[0]}\n\nComplete ONLY this step, then stop.`,
+          content: `Goal: ${input}\n\n${TOOL_REMINDER}\n\nStep 1 of ${todoState.items.length}: ${todoState.items[0]}\n\nOutput ONLY the tool call JSON, no explanation. Complete ONLY this step, then stop.`,
         });
         continue;
       }
@@ -789,7 +835,7 @@ async function main() {
         writeBlackBlankLine();
         messages.push({
           role: "user",
-          content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep 1 of ${todoState.items.length}: ${todoState.items[0]}\n\nComplete ONLY this step, then stop.`,
+          content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep 1 of ${todoState.items.length}: ${todoState.items[0]}\n\nOutput ONLY the tool call JSON, no explanation. Complete ONLY this step, then stop.`,
         });
         continue;
       }
@@ -837,7 +883,7 @@ async function main() {
           }
           messages.push({
             role: "user",
-            content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep ${todoState.index + 1} of ${todoState.items.length}: ${todoState.items[todoState.index]}\n\nComplete ONLY this step, then stop.`,
+            content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep ${todoState.index + 1} of ${todoState.items.length}: ${todoState.items[todoState.index]}\n\nOutput ONLY the tool call JSON, no explanation. Complete ONLY this step, then stop.`,
           });
           continue;
         }
@@ -846,10 +892,14 @@ async function main() {
 
       messages.push({ role: "assistant", content: assistantText });
 
-      // Separate run and write tools
-      const runTools = tools.filter((entry) => entry.tool.tool === "run" && !isNoopEcho(entry.tool.cmd));
-      const writeTools = tools.filter((entry) => entry.tool.tool === "write");
-      const skipped = tools.length - runTools.length - writeTools.length;
+      // Only process the first tool call to enforce one-at-a-time behavior
+      const firstTool = tools[0];
+      const hasMultipleTools = tools.length > 1;
+
+      // Separate run and write tools (only first one)
+      const runTools = firstTool.tool.tool === "run" && !isNoopEcho(firstTool.tool.cmd) ? [firstTool] : [];
+      const writeTools = firstTool.tool.tool === "write" ? [firstTool] : [];
+      const skipped = (firstTool.tool.tool === "run" && isNoopEcho(firstTool.tool.cmd)) ? 1 : 0;
 
       if (skipped > 0) {
         messages.push({
@@ -867,22 +917,26 @@ async function main() {
       if (runTools.length > 0) {
         const combined = runTools.map((entry) => entry.tool.cmd).join(" && ");
         process.stdout.write(`${TOOL_CMD_RED}${combined}${PROMPT_RESET}\n`);
-        const approve = await question("Run? [Y/n] ");
-        if (approve === null) break;
-        const approveText = approve.trim();
-        if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
-          messages.push({ role: "tool", name: "run", content: "Command not run (user denied)." });
-          // Prompt for feedback and continue with current step
-          const feedback = await readMultilineInput(question);
-          if (feedback === null) break;
-          if (feedback) {
-            writeBlackBlankLine();
-            messages.push({ role: "user", content: feedback });
-          } else {
-            messages.push({ role: "user", content: "Try a different approach for this step." });
+        let runApproved = true;
+        if (!args.yes) {
+          const approve = await question("Run? [Y/n] ");
+          if (approve === null) break;
+          const approveText = approve.trim();
+          if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
+            runApproved = false;
+            messages.push({ role: "tool", name: "run", content: "Command not run (user denied)." });
+            // Prompt for feedback and continue with current step
+            const feedback = await readMultilineInput(question);
+            if (feedback === null) break;
+            if (feedback) {
+              writeBlackBlankLine();
+              messages.push({ role: "user", content: feedback });
+            } else {
+              messages.push({ role: "user", content: "Try a different approach for this step." });
+            }
           }
-          continue;
         }
+        if (!runApproved) continue;
         process.stdout.write("\n");
 
         const result = await runCommand({
@@ -892,12 +946,36 @@ async function main() {
         });
         messages.push({ role: "tool", name: "run", content: formatToolResult(result) });
 
+        // In TODO mode with --yes, advance immediately without verification
+        if (todoState && args.yes && result.exitCode === 0) {
+          process.stdout.write(`${formatTodoList(todoState.items, todoState.index)}\n`);
+          writeBlackBlankLine();
+          todoState.index += 1;
+          if (todoState.index >= todoState.items.length) {
+            todoState = null;
+            break;
+          }
+          messages.push({
+            role: "user",
+            content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep ${todoState.index + 1} of ${todoState.items.length}: ${todoState.items[todoState.index]}\n\nOutput ONLY the tool call JSON, no explanation. Complete ONLY this step, then stop.`,
+          });
+          continue;
+        }
+
         // Only prompt verification for write operations, not reads
         const isReadOnly = /^\s*(cat|ls|head|tail|grep|find|wc|file|stat|pwd|echo|tree)\s/.test(combined);
         if (result.exitCode === 0 && !isReadOnly) {
           messages.push({
             role: "user",
             content: "If that was a write operation, verify it succeeded. Then continue with your task.",
+          });
+        }
+
+        // Remind model to do one tool at a time if it output multiple
+        if (hasMultipleTools) {
+          messages.push({
+            role: "user",
+            content: "REMINDER: Output ONE tool call per response. I executed only the first one. Continue with your next action.",
           });
         }
       }
@@ -908,22 +986,26 @@ async function main() {
         const preview = fileContent.length > 200 ? fileContent.slice(0, 200) + "..." : fileContent;
         process.stdout.write(`${TOOL_CMD_RED}write: ${filePath}${PROMPT_RESET}\n`);
         process.stdout.write(`${preview}\n`);
-        const approve = await question("Write? [Y/n] ");
-        if (approve === null) break;
-        const approveText = approve.trim();
-        if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
-          messages.push({ role: "tool", name: "write", content: "File not written (user denied)." });
-          // Prompt for feedback and continue with current step
-          const feedback = await readMultilineInput(question);
-          if (feedback === null) break;
-          if (feedback) {
-            writeBlackBlankLine();
-            messages.push({ role: "user", content: feedback });
-          } else {
-            messages.push({ role: "user", content: "Try a different approach for this step." });
+        let writeApproved = true;
+        if (!args.yes) {
+          const approve = await question("Write? [Y/n] ");
+          if (approve === null) break;
+          const approveText = approve.trim();
+          if (approveText.length > 0 && !/^y(es)?$/i.test(approveText)) {
+            writeApproved = false;
+            messages.push({ role: "tool", name: "write", content: "File not written (user denied)." });
+            // Prompt for feedback and continue with current step
+            const feedback = await readMultilineInput(question);
+            if (feedback === null) break;
+            if (feedback) {
+              writeBlackBlankLine();
+              messages.push({ role: "user", content: feedback });
+            } else {
+              messages.push({ role: "user", content: "Try a different approach for this step." });
+            }
           }
-          break; // Break from writeTools loop, but continue main loop
         }
+        if (!writeApproved) break; // Break from writeTools loop, but continue main loop
         process.stdout.write("\n");
 
         try {
@@ -931,15 +1013,48 @@ async function main() {
           await fs.mkdir(path.dirname(fullPath), { recursive: true });
           await fs.writeFile(fullPath, fileContent, "utf-8");
           messages.push({ role: "tool", name: "write", content: `File written: ${filePath}` });
+
+          // In TODO mode with --yes, advance immediately without verification
+          if (todoState && args.yes) {
+            process.stdout.write(`${formatTodoList(todoState.items, todoState.index)}\n`);
+            writeBlackBlankLine();
+            todoState.index += 1;
+            if (todoState.index >= todoState.items.length) {
+              todoState = null;
+              break;
+            }
+            messages.push({
+              role: "user",
+              content: `Goal: ${todoState.goal}\n\n${TOOL_REMINDER}\n\nStep ${todoState.index + 1} of ${todoState.items.length}: ${todoState.items[todoState.index]}\n\nComplete ONLY this step, then stop.`,
+            });
+            break; // Break from FOR loop, then continue WHILE loop at line 1043
+          }
+
+          let verifyMsg = "Verify the file was written correctly, then continue with your task.";
+          if (hasMultipleTools) {
+            verifyMsg += " REMINDER: Output ONE tool call per response. I executed only the first one.";
+          }
           messages.push({
             role: "user",
-            content: "Verify the file was written correctly, then continue with your task.",
+            content: verifyMsg,
           });
         } catch (err) {
           messages.push({ role: "tool", name: "write", content: `Error writing file: ${err.message}` });
         }
       }
+
+      // If all TODOs completed, exit the loop
+      if (todoState === null && args.yes) {
+        break;
+      }
+
       continue;
+    }
+
+    // If running with a prompt argument, exit after completion
+    if (args.prompt) {
+      rl.close();
+      process.exit(0);
     }
   }
 }

@@ -54,6 +54,7 @@ export async function streamChat({ host, model, messages, onToken, debug }) {
       "-s",
       "-N",
       "--connect-timeout", "5",
+      "--max-time", "300",
       "-X", "POST",
       "-H", "Content-Type: application/json",
       "-d", bodyData,
