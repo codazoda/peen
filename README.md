@@ -16,7 +16,7 @@ On each start, `peen` checks GitHub for the latest version and self-updates if n
 
 ## Why this exists
 
-Popular AI tools like Claude Code, Open Code, and Codex are amazing, but the're built to work with "foundation" models that speak a very specific language (XML). I've been trying to get local, open-source models to work with these tools, but they almost always fail.
+Popular AI tools like Claude Code, Open Code, and Codex are amazing, but the're built to work with "foundation" models that speak a very specific language (XML). I've been trying to get local, open-source models to work with tools, but they almost always fail.
 
 The reason is simple: local models were trained mostly on JSON, a different way of formatting data. When you try to force a local model to use the "XML language" required by big CLI tools, it gets confused. This means the most powerful feature—the ability for the AI to actually run commands for you—breaks the moment you try to run it locally.
 
